@@ -1,10 +1,43 @@
 # CHCrossword
 
-**CROSSWORD**: full-size 13x13 crossword puzzles for the
-[CHGame](https://github.com/bateske/CH32SerialBoot) handheld, in the casino
-style of [CHBlackjack](https://github.com/bateske/CHBlackjack), with a score
-attack on top of the solving. 20 puzzles are built in, and more come as
-packs on a microSD card.
+![A whole puzzle in highlights: the deal, the first words typed in the close-up, a wrong word put right, the combo climbing, the jackpot word, the last word and the stars](docs/gameplay.gif)
+
+A crossword for the [CHGame](https://github.com/bateske/CH32SerialBoot) handheld
+(CH32X035 RISC-V, 128x128 colour LCD, piezo), in the casino of
+[CHBlackjack](https://github.com/bateske/CHBlackjack) and the tables after it:
+full 13x13 puzzles with the whole grid on screen, ivory tiles on green felt,
+a pointing glove and a rainbow frame on the square you are at, a camera that
+whips in to a close-up - bevelled tiles, the clue numbers in their corners,
+letters in an anti-aliased serif face - whenever you type or hold B, a letter
+board of felt-green keys that slides up to type on, and a score attack on
+top of the solving. A right word locks in gold, tile by tile,
+each a note up the scale; words in a row build a combo up to x5; one letter
+that finishes two words is a CROSS!; one word in every puzzle is the JACKPOT,
+worth three times over; a wrong word buzzes and shakes the table;
+and the last word sets the whole grid off under SOLVED!, with a time against
+par and one to three stars to keep.
+
+| Title | The puzzle list | The first words |
+|---|---|---|
+| ![title](docs/title.gif) | ![list](docs/list.gif) | ![words](docs/words.gif) |
+| **The close-up (hold B)** | **Down the grid** | **A wrong word** |
+| ![zoom](docs/zoom.gif) | ![combo](docs/combo.gif) | ![wrong](docs/wrong.gif) |
+| **The last word** | | |
+| ![solved](docs/solved.gif) | | |
+
+(Captured from the PC simulator in `tools/chsim`, which runs the real game
+and graphics code and renders what the device shows. The game has been built
+and checked in the simulator; it has not yet been run on the handheld itself,
+and its SD card driver in particular has never met a real card.)
+
+Twenty puzzles are built in - six easy, eight medium, six hard - and more
+come on the **SD card**: packs of up to 32 puzzles, up to 15x15, in a folder
+named `CHCW`. `sdcard/CHCW/BONUS.CWD` is one to start with, and
+`tools/puzzles/puz2cwd.py` makes packs from your own Across Lite `.puz`
+files. The grids were filled by this project's own grid maker and every clue
+written for the game; the framework is CHBlackjack's by way of CHChess and
+CHBackgammon, and the small 3x5 lettering is Press Play On Tape's font, as
+there. See `NOTICE`.
 
 ## How to install
 
@@ -66,47 +99,6 @@ The same from the command line:
     arduino-cli upload  -b CHGame:ch32v:CHGame -p COMx CHCrossword
 
 That is 50.3 KB of the 50,944-byte program area. The last two flash pages are left for your saved puzzle and records.
-
-## About the game
-
-A crossword for the [CHGame](https://github.com/bateske/CH32SerialBoot) handheld
-(CH32X035 RISC-V, 128x128 colour LCD, piezo), in the casino of
-[CHBlackjack](https://github.com/bateske/CHBlackjack) and the tables after it:
-full 13x13 puzzles with the whole grid on screen, ivory tiles on green felt,
-a pointing glove and a rainbow frame on the square you are at, a camera that
-whips in to a close-up - bevelled tiles, the clue numbers in their corners,
-letters in an anti-aliased serif face - whenever you type or hold B, a letter
-board of felt-green keys that slides up to type on, and a score attack on
-top of the solving. A right word locks in gold, tile by tile,
-each a note up the scale; words in a row build a combo up to x5; one letter
-that finishes two words is a CROSS!; one word in every puzzle is the JACKPOT,
-worth three times over; a wrong word buzzes and shakes the table;
-and the last word sets the whole grid off under SOLVED!, with a time against
-par and one to three stars to keep.
-
-![A whole puzzle in highlights: the deal, the first words typed in the close-up, a wrong word put right, the combo climbing, the jackpot word, the last word and the stars](docs/gameplay.gif)
-
-| Title | The puzzle list | The first words |
-|---|---|---|
-| ![title](docs/title.gif) | ![list](docs/list.gif) | ![words](docs/words.gif) |
-| **The close-up (hold B)** | **Down the grid** | **A wrong word** |
-| ![zoom](docs/zoom.gif) | ![combo](docs/combo.gif) | ![wrong](docs/wrong.gif) |
-| **The last word** | | |
-| ![solved](docs/solved.gif) | | |
-
-(Captured from the PC simulator in `tools/chsim`, which runs the real game
-and graphics code and renders what the device shows. The game has been built
-and checked in the simulator; it has not yet been run on the handheld itself,
-and its SD card driver in particular has never met a real card.)
-
-Twenty puzzles are built in - six easy, eight medium, six hard - and more
-come on the **SD card**: packs of up to 32 puzzles, up to 15x15, in a folder
-named `CHCW`. `sdcard/CHCW/BONUS.CWD` is one to start with, and
-`tools/puzzles/puz2cwd.py` makes packs from your own Across Lite `.puz`
-files. The grids were filled by this project's own grid maker and every clue
-written for the game; the framework is CHBlackjack's by way of CHChess and
-CHBackgammon, and the small 3x5 lettering is Press Play On Tape's font, as
-there. See `NOTICE`.
 
 ## Playing
 
