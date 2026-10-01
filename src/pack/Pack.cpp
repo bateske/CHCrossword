@@ -50,13 +50,7 @@ static bool goodHeader(const uint8_t *h) {
 }
 
 // Sector k of the current card pack into dst.
-static bool sector(uint32_t k, uint8_t *dst) {
-    for (uint8_t r = 0; r < nRuns; r++) {
-        if (k < runs[r].blocks) return sd::read(runs[r].lba + k, dst);
-        k -= runs[r].blocks;
-    }
-    return false;
-}
+static bool sector(uint32_t k, uint8_t *dst) { return fat::read(runs, nRuns, k, dst); }
 
 // The card went away (or gave rubbish): back to the built-in pack.
 static bool lost() {

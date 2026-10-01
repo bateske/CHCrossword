@@ -1,5 +1,74 @@
 # CHCrossword
 
+**CROSSWORD**: full-size 13x13 crossword puzzles for the
+[CHGame](https://github.com/bateske/CH32SerialBoot) handheld, in the casino
+style of [CHBlackjack](https://github.com/bateske/CHBlackjack), with a score
+attack on top of the solving. 20 puzzles are built in, and more come as
+packs on a microSD card.
+
+## How to install
+
+There are two parts: the **game**, which goes onto the CHGame over USB, and
+the **puzzle packs**, which go on a microSD card. The card is optional: 20
+puzzles are built into the game. Each pack on the card adds up to 32 more.
+
+### Step 1: put the puzzle packs on a microSD card
+
+1. **Download [`BONUS.CWD`](https://github.com/bateske/CHCrossword/raw/main/sdcard/CHCW/BONUS.CWD)**,
+   a pack of three puzzles. It is in this repository's
+   [`sdcard/CHCW`](sdcard/CHCW) folder.
+2. **Use a microSD card formatted FAT32** (FAT16 works too). Cards of
+   32 GB or less come formatted that way, so a new one is ready as it is.
+   Cards of 64 GB and more come as exFAT, which the game cannot read: reformat
+   such a card as FAT32 first (or use a smaller card).
+3. **Make a folder named `CHCW` at the top level of the card, and copy
+   `BONUS.CWD` into it.** Packs anywhere else are not found. The card should
+   look like this:
+
+       SD card
+       └── CHCW
+           └── BONUS.CWD
+
+   Other packs (`.CWD` files, up to eight) go into the same `CHCW` folder.
+4. **Put the card in the CHGame's slot.** The game looks at the card each
+   time you choose **PLAY**. On the puzzle list, **LEFT** and **RIGHT** move
+   between the built-in puzzles and the card's packs. If something is wrong,
+   the list says so: **CARD: FORMAT IT AS FAT32** (an exFAT card),
+   **CARD: NO PACKS IN CHCW**, or **CARD: CANNOT READ IT**.
+
+### Step 2: put the game on the CHGame
+
+1. Install the **Arduino IDE 2.x** from <https://www.arduino.cc/en/software>.
+2. Add the **CHGame board package** (0.2.4 or later). In *File > Preferences*,
+   paste this into *Additional boards manager URLs*:
+
+       https://github.com/bateske/CH32SerialBoot/releases/latest/download/package_chgame_index.json
+
+   Then open *Tools > Board > Boards Manager*, search for **CHGame** and click
+   *Install*.
+3. Add the **CHGfx library** (1.3.0). On <https://github.com/bateske/CHGfx>
+   click *Code > Download ZIP*. Then in the IDE choose *Sketch > Include
+   Library > Add .ZIP Library...* and pick the zip you downloaded.
+4. **Download this game.** At the top of this page click *Code > Download
+   ZIP* and unzip it. **Rename the folder from `CHCrossword-main` to `CHCrossword`**:
+   the Arduino IDE only opens a sketch whose folder has the same name as its
+   `.ino` file.
+5. Open `CHCrossword/CHCrossword.ino` in the IDE and set:
+   - *Tools > Board*: **CHGame**
+   - *Tools > Optimize*: **Smallest + LTO**. The game does not fit without it.
+   - *Tools > USB*: **Upload only**
+   - *Tools > Port*: the CHGame's port
+6. Plug the CHGame in by USB and click **Upload** (the arrow button).
+
+The same from the command line:
+
+    arduino-cli compile -b CHGame:ch32v:CHGame:opt=oslto,rtlib=nano,periph=game,usb=uploadonly CHCrossword
+    arduino-cli upload  -b CHGame:ch32v:CHGame -p COMx CHCrossword
+
+That is 50.3 KB of the 50,944-byte program area. The last two flash pages are left for your saved puzzle and records.
+
+## About the game
+
 A crossword for the [CHGame](https://github.com/bateske/CH32SerialBoot) handheld
 (CH32X035 RISC-V, 128x128 colour LCD, piezo), in the casino of
 [CHBlackjack](https://github.com/bateske/CHBlackjack) and the tables after it:
@@ -32,36 +101,12 @@ and its SD card driver in particular has never met a real card.)
 
 Twenty puzzles are built in - six easy, eight medium, six hard - and more
 come on the **SD card**: packs of up to 32 puzzles, up to 15x15, in a folder
-named `CHCW`. `packs/BONUS.CWD` is one to start with, and
+named `CHCW`. `sdcard/CHCW/BONUS.CWD` is one to start with, and
 `tools/puzzles/puz2cwd.py` makes packs from your own Across Lite `.puz`
 files. The grids were filled by this project's own grid maker and every clue
 written for the game; the framework is CHBlackjack's by way of CHChess and
 CHBackgammon, and the small 3x5 lettering is Press Play On Tape's font, as
 there. See `NOTICE`.
-
-## Installing
-
-You need the Arduino IDE (2.x) or `arduino-cli`, and:
-
-1. **The CHGame board package, 0.2.4 or later** (Boards Manager URL
-   `https://github.com/bateske/CH32SerialBoot/releases/latest/download/package_chgame_index.json`).
-2. **The CHGfx library, 1.3.0** from <https://github.com/bateske/CHgfx>.
-3. **This repository**, in a folder named `CHCrossword`.
-
-The game needs **link-time optimisation**: pick *Tools > Optimize > Smallest
-+ LTO*, and *Tools > USB > Upload only* (the game has no use for USB Serial,
-and uploading works as before). That is 50.4 KB of the 50,944-byte
-application region: all of it but the two flash pages that hold your saved
-puzzle and records. From the command line:
-
-    arduino-cli compile -b CHGame:ch32v:CHGame:opt=oslto,rtlib=nano,periph=game,usb=uploadonly CHCrossword
-    arduino-cli upload  -b CHGame:ch32v:CHGame -p COMx CHCrossword
-
-(`python tools/device.py build` does the same.)
-
-For more puzzles, copy `packs/BONUS.CWD` (and any packs of your own) into a
-folder named `CHCW` at the top of a microSD card formatted FAT16 or FAT32 -
-how cards up to 32 GB come. The game plays without a card.
 
 ## Playing
 
@@ -135,7 +180,7 @@ packs played.
   on the card (`tools/puzzles/cwformat.py` describes the format and holds
   the reference decoder the tests check the game's against).
 - **The card.** A polled, read-only block driver and FAT16/FAT32 reader
-  (HypeRunner's, as CHWords cut them down) find `CHCW/*.CWD`, and a
+  (CHSd, shared with CHWords and CHWordWheel; HypeRunner's) find `CHCW/*.CWD`, and a
   card puzzle is copied into 2 KB of RAM when it starts, so the card is not
   touched again while you play - pull it out mid-puzzle and nothing happens.
   The card shares its SPI bus with the screen: it is only read between

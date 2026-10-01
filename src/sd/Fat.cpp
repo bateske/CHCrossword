@@ -1,8 +1,10 @@
+// CHSd 1.0.0 (generated: edit CHSd/src/Fat.cpp, then run CHSd/tools/vendor.py)
 // Fat.cpp - see Fat.h. From HypeRunner's src/sd/Fat.cpp (MIT): clean-room
-// from the Microsoft FAT specification and the MBR layout, by way of
-// CHWords' cut of it. Here a file is looked for by pattern in a folder of
-// the root directory. (This file runs on the PC as well: the simulator's
-// card is a real FAT image, and the host tests read one.)
+// from the Microsoft FAT specification and the MBR layout, by way of the
+// cuts CHWords and CHCrossword made of it. Files are looked for in the root
+// directory or in a folder of it. This file runs on the PC as well: the
+// simulator's card and the host tests go through it, so what is tested is
+// what the board runs.
 //
 // Size notes (-Os, RV32): word-sized locals avoid the masking and sign
 // extension that uint8_t/int8_t locals cost. Fields at odd offsets (some BPB
@@ -84,10 +86,16 @@ bool bpb(const uint8_t *b, uint32_t base) {
 
 // Finds an 11-byte short name ('?' = any character) in directory `dir` (a
 // cluster, or 0 for the FAT16 root region), passing over the first `skip`
-// that fit. A directory holds at most 65,536 entries (4,096 sectors), which
-// bounds the walk when a chain loops. b is shared by the directory sectors
-// and the FAT lookups, so nothing is cached here.
-int32_t lookup(uint32_t dir, const uint8_t *name, File &f, uint8_t *b, bool wantDir, uint32_t skip,
+// that fit. `want` is the entry's attributes masked with ATTR_TEST: 0 for a
+// plain file, ATTR_DIR for a folder; so deleted entries aside, volume
+// labels, long-name parts and hidden entries never match, and neither does
+// a file for a folder or the other way round, all in one test. A directory
+// holds at most 65,536 entries (4,096 sectors), which bounds the walk when
+// a chain loops. b is shared by the directory sectors and the FAT lookups,
+// so nothing is cached here.
+const uint32_t ATTR_DIR = 0x10, ATTR_TEST = ATTR_DIR | 0x08 | 0x02;   // folder, label, hidden
+
+int32_t lookup(uint32_t dir, const uint8_t *name, File &f, uint8_t *b, uint32_t want, uint32_t skip,
                char *nameOut) {
     uint32_t sec = 0;
     for (uint32_t guard = 4096; guard--;) {
@@ -109,12 +117,10 @@ int32_t lookup(uint32_t dir, const uint8_t *name, File &f, uint8_t *b, bool want
         if (!sd::read(lba, b)) return E_READ;
         for (const uint8_t *d = b; d < b + 512; d += 32) {
             if (!d[0]) return E_NOTFOUND;                   // end-of-directory mark
-            if (d[0] == 0xE5 || (d[11] & 0x08)) continue;   // deleted; volume label or long-name part
+            if (d[0] == 0xE5 || (d[11] & ATTR_TEST) != want) continue;   // deleted, or not the kind wanted
             uint32_t i = 0;
             while (i < 11 && (d[i] == name[i] || name[i] == '?')) i++;
             if (i < 11) continue;
-            // A folder is wanted, or a plain file that is not hidden.
-            if (wantDir ? !(d[11] & 0x10) : (d[11] & 0x12) != 0) continue;
             if (skip) { skip--; continue; }
             if (nameOut) for (i = 0; i < 11; i++) nameOut[i] = (char)d[i];
             // The high cluster word only exists on FAT32 (a fixed root
@@ -151,9 +157,14 @@ int8_t mount(uint8_t *b) {
     }
 }
 
+int8_t find(const char *name, File &f, uint8_t *b) {
+    if (!v.end) return E_NOTFOUND;
+    return (int8_t)lookup(v.rootSecs ? 0 : v.root, (const uint8_t *)name, f, b, 0, 0, nullptr);
+}
+
 int8_t folder(const char *name, File &dir, uint8_t *b) {
     if (!v.end) return E_NOTFOUND;
-    int32_t rc = lookup(v.rootSecs ? 0 : v.root, (const uint8_t *)name, dir, b, true, 0, nullptr);
+    int32_t rc = lookup(v.rootSecs ? 0 : v.root, (const uint8_t *)name, dir, b, ATTR_DIR, 0, nullptr);
     // (A folder's first cluster is never 0: that would be the root.)
     if (!rc && dir.cluster < 2) rc = E_NOTFOUND;
     return (int8_t)rc;
@@ -161,7 +172,7 @@ int8_t folder(const char *name, File &dir, uint8_t *b) {
 
 int8_t match(const File &dir, const char *pattern, uint8_t skip, File &f, char *nameOut, uint8_t *b) {
     if (!v.end) return E_NOTFOUND;
-    return (int8_t)lookup(dir.cluster, (const uint8_t *)pattern, f, b, false, skip, nameOut);
+    return (int8_t)lookup(dir.cluster, (const uint8_t *)pattern, f, b, 0, skip, nameOut);
 }
 
 int8_t runs(const File &f, Run *out, uint8_t maxRuns, uint8_t *b) {
@@ -188,6 +199,23 @@ int8_t runs(const File &f, Run *out, uint8_t maxRuns, uint8_t *b) {
         c = (uint32_t)nx;
     }
     return 0;
+}
+
+// (Passing the reason for a failure on would cost some 40 B of flash in
+// every game that only needs to know whether the file is there.)
+uint8_t open(const char *name, Run *out, uint8_t maxRuns, uint8_t *b) {
+    File f;
+    if (!sd::init() || mount(b) || find(name, f, b)) return 0;
+    int8_t n = runs(f, out, maxRuns, b);
+    return n > 0 ? (uint8_t)n : 0;
+}
+
+bool read(const Run *r, uint32_t n, uint32_t k, uint8_t *dst) {
+    for (; n; n--, r++) {
+        if (k < r->blocks) return sd::read(r->lba + k, dst);
+        k -= r->blocks;
+    }
+    return false;
 }
 
 }  // namespace fat

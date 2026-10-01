@@ -1,10 +1,12 @@
-"""FAT16/FAT32 disk images for tests and hrsim, and a small FAT reader.
+# CHSd 1.0.0 (generated: edit CHSd/tools/fatimg.py, then run CHSd/tools/vendor.py)
+"""FAT16/FAT32 disk images for tests and the simulators, and a small FAT reader
+(CHSd; from HypeRunner's tools/hypelib, MIT).
 
-    python tools/hypelib/fatimg.py build OUT.img SRC[=NAME] ... [--fs fat32|fat16]
+    python tools/fatimg.py build OUT.img SRC[=NAME] ... [--fs fat32|fat16]
                  [--superfloppy] [--spc N] [--clusters N] [--fragment NAME=PIECES]
                  [--seed S] [--lfn] [--decoys]
-    python tools/hypelib/fatimg.py runs IMAGE PATH [PATH ...]
-    python tools/hypelib/fatimg.py ls IMAGE [DIR]
+    python tools/fatimg.py runs IMAGE PATH [PATH ...]
+    python tools/fatimg.py ls IMAGE [DIR]
 
 build_image() writes a whole card image: an MBR with one partition (or a
 "superfloppy" volume at LBA 0), a boot sector, FSInfo and backup boot sector
@@ -15,9 +17,9 @@ Every byte of the image is written; nothing is sparse.
 
 FatVolume reads an image the way src/sd/Fat.cpp reads a card (same
 partition choice, same error codes; its boot sector checks are a stricter
-superset, so an image it accepts mounts on the device) and is what
-tools/card.py uses to check a raw image. Tests compare the C code against the Layout that build_image()
-returns, which records where every cluster went (the ground truth).
+superset, so an image it accepts mounts on the device). Tests compare the
+C code against the Layout that build_image() returns, which records where
+every cluster went (the ground truth).
 
 Written from the Microsoft FAT specification (BPB, FAT type by cluster
 count, directory and long-name entries, FSInfo) and the MBR layout.

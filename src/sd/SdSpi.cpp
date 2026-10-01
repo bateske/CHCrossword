@@ -1,9 +1,19 @@
+// CHSd 1.0.0 (generated: edit CHSd/src/SdSpi.cpp, then run CHSd/tools/vendor.py)
 // SdSpi.cpp - see SdSpi.h. From HypeRunner's src/sd/SdSpi.cpp (MIT, clean
 // room: written from the SD Physical Layer Simplified Specification, chapter
 // 7, and the CH32X035 reference manual), reduced to polled single-block
-// reads. The simulator's stand-in is tools/chsim/host/sd_host.cpp, the host
-// tests' is in tools/tests/test_card.cpp.
-#pragma GCC optimize("Os", "no-ipa-sra")
+// reads. The simulator's stand-in is tools/chsim/host/sd_host.cpp.
+//
+// Speed: a block is about 0.5 ms of polled bytes at 12 MHz, and the card's
+// own access time (CMD17 to the data token, 0.1-1 ms and more) is on top of
+// that, so a faster clock or DMA would save little; neither is worth losing
+// the panel's DMA channel or going without a CRC for.
+//
+// Size notes (-Os, RV32, LTO): loop counters are word-sized (uint8_t ones
+// cost a mask on every pass). The two extra flags below took 0-28 B off the
+// games' images on 2026-10-01; on Fat.cpp they cost up to 88 B, so it keeps
+// plain -Os (measure all three games before changing either).
+#pragma GCC optimize("Os", "no-ipa-sra", "no-jump-tables", "no-guess-branch-probability")
 #if !defined(CHSIM) && !defined(CHTEST)
 #include <Arduino.h>
 #include "SdSpi.h"
@@ -15,8 +25,12 @@ static const uint32_t SPI_MASTER = (1u << 2) | (1u << 8) | (1u << 9);   // MSTR 
 static const uint32_t SPE = 1u << 6, RXNE = 1u << 0, BSY = 1u << 7;
 static const uint8_t BR_IDENT = 7;              // 48 MHz / 256 = 187.5 kHz
 static const uint8_t BR_RUN = 1;                // 12 MHz: polled bytes are slower than the wire anyway
-// (A block never written can take some cards 300-770 ms to deliver the first time.)
-static const uint32_t TOKEN_US = 1000000, BUSY_US = 300000, INIT_US = 1000000;
+// A block never read since power-up can take some cards 300-770 ms to
+// deliver (measured by HypeRunner on a 16 GB card), hence the long token
+// wait. The busy wait shares it: a read-only driver never leaves the card
+// busy, and an empty slot reads 0xFF (not busy) at once. One constant lets
+// the compiler fold it into wait() (16 B less than two).
+static const uint32_t WAIT_US = 1000000, INIT_US = 1000000;
 
 static uint8_t br;
 static bool hc;                                 // block addressing (SDHC/SDXC)
@@ -52,11 +66,11 @@ static void release() {
 }
 
 // Clocks 0xFF until a start token arrives (tok: anything but 0xFF) or busy
-// ends (!tok: 0xFF), or us runs out. Returns the last byte.
-static uint8_t wait(uint32_t us, bool tok) {
+// ends (!tok: 0xFF), or WAIT_US runs out. Returns the last byte.
+static uint8_t wait(bool tok) {
     uint32_t t0 = micros();
     uint8_t b;
-    do b = xfer(0xFF); while ((b == 0xFF) == tok && micros() - t0 <= us);
+    do b = xfer(0xFF); while ((b == 0xFF) == tok && micros() - t0 <= WAIT_US);
     return b;
 }
 
@@ -68,21 +82,23 @@ static uint8_t cmd(uint8_t c, uint32_t arg) {
     xfer((uint8_t)(0x40 | c));
     for (int sh = 24; sh >= 0; sh -= 8) xfer((uint8_t)(arg >> sh));
     xfer(c == 8 ? 0x87 : 0x95);
-    uint8_t r, k = 9;
+    uint8_t r;
+    uint32_t k = 9;
     do r = xfer(0xFF); while ((r & 0x80) && --k);
     return r;
 }
 
 static uint32_t rd32() {
     uint32_t r = 0;
-    for (uint8_t i = 0; i < 4; i++) r = (r << 8) | xfer(0xFF);
+    for (uint32_t i = 4; i; i--) r = (r << 8) | xfer(0xFF);
     return r;
 }
 
 // Identification at 187.5 kHz with CS low (spec figure 7-2).
 static bool ident() {
-    uint8_t r, k = 20;
-    wait(BUSY_US, false);
+    uint8_t r;
+    uint32_t k = 20;
+    wait(false);
     while (cmd(0, 0) != 0x01)                   // GO_IDLE_STATE: enter SPI mode
         if (!--k) return false;
     bool v2 = false;
@@ -111,7 +127,7 @@ bool init() {
     br = BR_IDENT;
     claim();
     GPIOB->BSHR = 1u << 11;
-    for (uint8_t k = 0; k < 10; k++) xfer(0xFF);    // >= 74 clocks with CS high
+    for (uint32_t k = 10; k; k--) xfer(0xFF);   // >= 74 clocks with CS high
     GPIOB->BCR = 1u << 11;
     bool ok = ident();
     release();
@@ -121,9 +137,9 @@ bool init() {
 
 bool read(uint32_t lba, uint8_t *dst) {
     claim();
-    bool ok = wait(BUSY_US, false) == 0xFF && cmd(17, hc ? lba : lba << 9) == 0 && wait(TOKEN_US, true) == 0xFE;
+    bool ok = wait(false) == 0xFF && cmd(17, hc ? lba : lba << 9) == 0 && wait(true) == 0xFE;
     if (ok) {
-        for (uint16_t i = 0; i < 512; i++) dst[i] = xfer(0xFF);
+        for (uint32_t i = 0; i < 512; i++) dst[i] = xfer(0xFF);
         xfer(0xFF);                             // the CRC16, unused
         xfer(0xFF);
     }

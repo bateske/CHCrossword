@@ -1,5 +1,6 @@
-// Fat: read-only FAT16/FAT32 on top of sd::read (clean-room, MIT; from
-// HypeRunner, see NOTICE).
+// CHSd 1.0.0 (generated: edit CHSd/src/Fat.h, then run CHSd/tools/vendor.py)
+// Fat: read-only FAT16/FAT32 on top of sd::read (CHSd; clean-room, MIT,
+// from HypeRunner: see NOTICE).
 //
 // Written from the Microsoft FAT specification (BPB fields, FAT type from
 // the cluster count, 8.3 directory entries, end-of-chain marks) and the MBR
@@ -7,8 +8,13 @@
 // that a file is read as raw card blocks through its run list, so there is
 // no FAT write code, no cache and no file object. Every call borrows the
 // caller's 512 B buffer (4-byte aligned) and clobbers it; the volume state
-// is 24 B. Here it also finds a folder in the root directory and the files
-// in it that match a pattern (the packs: CHCW/*.CWD).
+// is 24 B. What a game does not call is left out of its image by the linker.
+//
+// Names are 8.3 short names as the directory stores them: 11 characters,
+// capitals, the name and the extension padded with spaces ("WORDS   DIC"),
+// and '?' stands for any character. Long-name entries, volume labels and
+// hidden entries are skipped; a file never matches a folder name, nor a
+// folder a file name.
 #pragma once
 #include <stdint.h>
 
@@ -32,15 +38,15 @@ struct File { uint32_t cluster, size; };      // first cluster, size in bytes
 // MBR with a type 07 partition and no FAT one, is E_EXFAT.
 int8_t mount(uint8_t *buf);
 
-// A folder in the root directory by its 8.3 name as the directory stores
-// it: 11 characters, capitals, the name and the extension padded with
-// spaces ("CHCW       "). Long-name entries are skipped.
+// A file in the root directory.
+int8_t find(const char *name, File &f, uint8_t *buf);
+
+// A folder in the root directory.
 int8_t folder(const char *name, File &dir, uint8_t *buf);
 
-// The (skip + 1)th file in a folder whose short name fits a pattern of 11
-// characters, '?' standing for any ("????????CWD"). Its 11-character name
-// is copied to nameOut (no NUL). Folders, hidden files and volume labels
-// never match. E_NOTFOUND: there are no more.
+// The (skip + 1)th file in a folder whose name fits pattern ("????????CWD").
+// Its 11-character name is copied to nameOut (no NUL) unless that is null.
+// E_NOTFOUND: there are no more.
 int8_t match(const File &dir, const char *pattern, uint8_t skip, File &f, char *nameOut, uint8_t *buf);
 
 // Walks f's cluster chain once and returns its extents: up to maxRuns runs
@@ -49,5 +55,14 @@ int8_t match(const File &dir, const char *pattern, uint8_t skip, File &f, char *
 // by the file's size and the chain must end right there, so a looped or
 // truncated FAT gives E_CHAIN instead of a hang.
 int8_t runs(const File &f, Run *out, uint8_t maxRuns, uint8_t *buf);
+
+// The usual way in: sd::init(), mount(), find(name) and runs(), in one go.
+// Returns the run count; 0 if any step failed or the file is empty. (A game
+// that tells the player why there is no card calls the steps itself.)
+uint8_t open(const char *name, Run *out, uint8_t maxRuns, uint8_t *buf);
+
+// Block k of a file (0 = its first 512 bytes) through its runs, into dst.
+// False: past the end, or the card did not deliver it.
+bool read(const Run *run, uint32_t nRuns, uint32_t k, uint8_t *dst);
 
 }  // namespace fat

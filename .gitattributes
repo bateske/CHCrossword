@@ -2,3 +2,6 @@
 *.gif binary
 *.png binary
 *.bin binary
+
+# The SD card files, byte for byte
+sdcard/** binary

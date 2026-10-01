@@ -15,11 +15,12 @@ Serif Bold by tools/tilefont.py. DejaVu is freely redistributable: Bitstream
 Vera Fonts Copyright (c) 2003 Bitstream, Inc.; DejaVu changes are in the
 public domain (https://dejavu-fonts.github.io/License.html).
 
-The SD card block driver and FAT reader (src/sd) are HypeRunner's (MIT,
-clean-room from the SD and FAT specifications), in the polled, read-only
-form CHWords cut them down to (a snapshot of 2026-10-01); the FAT image
+The SD card block driver and FAT reader (src/sd, and the simulator's card
+in tools/chsim/host/sd_host.cpp and VCard.h) are CHSd, the library this
+game shares with CHWords and CHWordWheel: HypeRunner's (MIT, clean-room
+from the SD and FAT specifications), polled and read-only. The FAT image
 builder the tests and the simulator's card use (tools/puzzles/fatimg.py) is
-HypeRunner's too.
+HypeRunner's too, by way of CHSd.
 
 The grid maker (tools/puzzles/fill.py) chooses words from the ENABLE word
 list (public domain), keeping to common ones by the word frequencies of the
