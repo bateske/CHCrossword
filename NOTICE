@@ -1,0 +1,23 @@
+CHCrossword
+Copyright 2026 bateske
+
+From CHBlackjack (https://github.com/bateske/CHBlackjack, Apache-2.0), by way
+of CHChess and CHBackgammon: the input and frame pacing (src/CHGame.*),
+palette, drawing, outlined lettering, effects, sound sequencer, flash saving,
+debug protocol and the PC simulator and tools, adapted here; CHChess's
+pointing glove (tools/art/hand.png) and CHBackgammon's display font
+(tools/art/font.txt). CHBlackjack is a derivative of "Blackjack" for the
+Arduboy by Press Play On Tape (Apache-2.0); the 3x5 pixel font in
+src/gfx/Draw.cpp is Press Play On Tape's.
+
+The SD card block driver and FAT reader (src/sd) are HypeRunner's (MIT,
+clean-room from the SD and FAT specifications), in the polled, read-only
+form CHWords cut them down to.
+
+The grid filler (tools/puzzles/fill.py) chooses words from the ENABLE word
+list (public domain), ranked by Peter Norvig's Google Books word counts;
+neither list is part of the game. The puzzles' grids were filled with it and
+their clues written for this game.
+
+Everything else - the puzzles, their format and tools, the rules, the score
+and the presentation - is new, under the Apache License 2.0 (LICENSE).

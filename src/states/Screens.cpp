@@ -1,0 +1,704 @@
+#pragma GCC optimize("Os", "no-ipa-sra")   // cold code: size over speed (hot pixel loops live in Draw/Mask)
+#include <Arduino.h>
+#include <string.h>
+#include <CHGfx.h>
+#include "../../config.h"
+#include "Screens.h"
+#include "../CHGame.h"
+#include "../gfx/Palette.h"
+#include "../gfx/Draw.h"
+#include "../gfx/Mask.h"
+#include "../gfx/Fmt.h"
+#include "../fx/Fx.h"
+#include "../audio/Audio.h"
+#include "../game/Puzzle.h"
+#include "../game/Game.h"
+#include "../pack/Pack.h"
+#include "../stage/Stage.h"
+#include "../save/Save.h"
+#include "../debug/Debug.h"
+#include "../assets/Assets.h"
+#ifdef CHSIM
+#include <sim.h>
+#endif
+
+namespace screens {
+
+enum class Scr : uint8_t { Title, Select, Play, Options };
+static Scr cur = Scr::Title, pending = Scr::Title;
+static uint16_t t;                   // frames on this screen
+static uint8_t fadeOut, fadeIn;
+static uint8_t sel;                  // menu cursor
+
+static Options opt;
+static Progress prog;
+static bool hasGame;                 // a saved puzzle is waiting
+
+// The puzzle list.
+static const uint8_t ROWS = 6;
+struct Row { char title[puz::TITLE_MAX + 1]; uint8_t size, diff; };
+static Row rows[ROWS];
+static uint8_t listSel, listTop;
+static bool listStale;               // the rows need reading again
+static uint8_t playing;              // the puzzle in play: its place in the pack
+
+// Play-screen overlays.
+enum Overlay : uint8_t { NONE, PAUSE, RESULT };
+static Overlay overlay;
+static game::Result result;
+static bool resultDone, newBest;
+static uint8_t resultT;
+
+// ---------------------------------------------------------------------------
+// Flow
+// ---------------------------------------------------------------------------
+static void go(Scr s) {
+    if (fadeOut) return;
+    pending = s;
+    fadeOut = 8;
+}
+
+static void enter(Scr s) {
+    cur = s;
+    t = 0;
+    sel = 0;
+    fadeIn = 8;
+    fx::clear();
+    if (s == Scr::Title) audio::sfx(Sfx::Title);
+    if (s == Scr::Select) listStale = true;
+}
+
+// Save the options and the records, and the puzzle in play if there is one.
+static void persist(bool withGame) {
+    gfx_wait();                      // save builds its page in the chunk scratch
+    game::Record r;
+    if (withGame) {
+        game::save(r);
+        r.packId = pack::id();
+        r.source = pack::current();
+        r.index = playing;
+        r.cursor = stage::cur;
+        r.down = stage::down;
+    }
+    save::store(opt, prog, withGame ? &r : nullptr);
+    hasGame = withGame;
+}
+
+static void applyOptions() {
+    audio::setOn(opt.sound != 0);
+    pal::setTheme(opt.felt);
+    stage::stepAll = opt.skip != 0;
+}
+
+// ---------------------------------------------------------------------------
+// Shared drawing (CHBlackjack's look)
+// ---------------------------------------------------------------------------
+static void feltBackdrop() {
+    gfx_clear(FELT);
+    dither(0, 0, 128, 6, FELT_DK, 0);
+    dither(0, 122, 128, 6, FELT_DK, 1);
+    dither(0, 0, 6, 128, FELT_DK, 0);
+    dither(122, 0, 6, 128, FELT_DK, 1);
+    gfx_rect(2, 2, 124, 124, GOLD);
+}
+
+// The display font's lettering with a gradient and an outline: the top
+// rows FX_B, so the palette makes them shimmer.
+static void heading(const char *text, int y) {
+    int w = fontWidth(text);
+    Mask m = maskBegin(w, FONT_H);
+    maskFont(m, 0, 0, text);
+    uint8_t r[FONT_H + 2];
+    for (int i = 0; i < FONT_H + 2; i++) r[i] = i < 3 ? FX_B : (i < 8 ? GOLD : WOOD);
+    maskDraw(m, 64 - w / 2, y, INK, INK, r);
+}
+
+static void centred35(int y, const char *s, uint8_t c) { text35(64 - text35Width(s) / 2, y, s, c); }
+static void centred2(int y, const char *s, uint8_t c) { fontText(64 - fontWidth(s) / 2, y, s, c); }
+
+// A menu line in the 3x5 font at twice the size, boxed while chosen with
+// two clear pixels between the frame and the lettering.
+static void menuItem(int y, const char *s, bool on, uint32_t frame) {
+    int w = text35x2Width(s), x = 64 - w / 2;
+    if (on) {
+        fillRound(x - 7, y - 4, w + 14, 17, 3, NAVY);
+        roundRect(x - 7, y - 4, w + 14, 17, 3, (frame & 16) ? FX_B : GOLD);
+    }
+    text35x2(x, y, s, on ? GOLD : WHITE);
+}
+
+static bool menuNav(uint8_t n) {
+    if (arduboy.repeat(UP_BUTTON) && sel > 0) { sel--; audio::sfx(Sfx::Cursor); }
+    if (arduboy.repeat(DOWN_BUTTON) && sel + 1 < n) { sel++; audio::sfx(Sfx::Cursor); }
+    return arduboy.justPressed(A_BUTTON);
+}
+
+static void panel(int y, int h) {
+    fillRound(10, y, 108, h, 3, NAVY);
+    roundRect(10, y, 108, h, 3, GOLD);
+}
+
+static char *fmtTime(char *p, uint32_t s) {
+    if (s > 5999) s = 5999;
+    *p++ = (char)('0' + s / 600); *p++ = (char)('0' + s / 60 % 10); *p++ = ':';
+    *p++ = (char)('0' + s % 60 / 10); *p++ = (char)('0' + s % 10); *p = 0;
+    return p;
+}
+
+// ---------------------------------------------------------------------------
+// The records
+// ---------------------------------------------------------------------------
+static uint16_t bestTime(uint8_t i) { return (uint16_t)(prog.best[i].timeLo | (prog.best[i].timeHi & 0x3F) << 8); }
+static uint8_t bestStars(uint8_t i) { return prog.best[i].timeHi >> 6; }
+
+static Progress::Card *cardSlot(bool make) {
+    uint16_t id = (uint16_t)pack::id();
+    for (auto &c : prog.card) if (c.id == id && (c.solved || !make)) return &c;
+    if (!make) return nullptr;
+    // A new pack takes the older slot.
+    prog.card[1] = prog.card[0];
+    prog.card[0].id = id;
+    prog.card[0].solved = 0;
+    return &prog.card[0];
+}
+
+// Stars and best time of puzzle i of the current pack (card packs: solved or not).
+static uint8_t starsOf(uint8_t i, uint16_t &secs) {
+    secs = 0;
+    if (pack::current() == 0) {
+        if (i >= Progress::BUILTIN) return 0;
+        secs = bestTime(i);
+        return secs ? bestStars(i) : 0;
+    }
+    Progress::Card *c = cardSlot(false);
+    return c && (c->solved >> i & 1) ? 1 : 0;
+}
+
+static void record(const game::Result &r) {
+    newBest = false;
+    if (pack::current() == 0) {
+        if (playing >= Progress::BUILTIN) return;
+        Progress::Best &b = prog.best[playing];
+        uint16_t old = bestTime(playing), secs = r.seconds > 0x3FFF ? 0x3FFF : r.seconds ? r.seconds : 1;
+        uint8_t stars = bestStars(playing), score = (uint8_t)(r.score / 100 > 255 ? 255 : r.score / 100);
+        newBest = !old || secs < old || score > b.score;
+        if (!old || secs < old) old = secs;
+        if (r.stars > stars) stars = r.stars;
+        if (score > b.score) b.score = score;
+        b.timeLo = (uint8_t)old;
+        b.timeHi = (uint8_t)((old >> 8) | (stars << 6));
+    } else if (playing < 32) {
+        cardSlot(true)->solved |= 1ul << playing;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Title: tiles laid on the felt.
+// ---------------------------------------------------------------------------
+enum Item : uint8_t { I_PLAY, I_CONTINUE, I_OPTIONS };
+static const char *const ITEM[3] = {"PLAY", "CONTINUE", "OPTIONS"};
+
+static uint8_t titleItems(uint8_t *items) {
+    uint8_t n = 0;
+    if (hasGame) items[n++] = I_CONTINUE;
+    items[n++] = I_PLAY;
+#if !CHCW_LEAN
+    items[n++] = I_OPTIONS;
+#endif
+    return n;
+}
+
+static bool startPuzzle(uint8_t i) {
+    gfx_wait();
+    if (!pack::open(i)) return false;
+    playing = i;
+    game::start(opt.check == 0);
+    stage::enter();
+    overlay = NONE;
+    resultDone = false;
+    go(Scr::Play);
+    return true;
+}
+
+static bool continueGame() {
+    game::Record r;
+    gfx_wait();
+    if (!save::loadGame(r)) return false;
+    if (r.source) pack::scan();
+    if (!pack::find(r.packId) || !pack::open(r.index)) return false;
+    playing = r.index;
+    game::load(r);
+    stage::enter();
+    stage::setCursor(r.cursor, r.down);
+    overlay = NONE;
+    resultDone = false;
+    go(Scr::Play);
+    return true;
+}
+
+static void titleUpdate() {
+    uint8_t items[4], n = titleItems(items);
+    if (sel >= n) sel = 0;
+    if (menuNav(n)) {
+        audio::sfx(Sfx::Select);
+        switch (items[sel]) {
+            case I_PLAY: go(Scr::Select); break;
+            case I_CONTINUE:
+                if (!continueGame()) { hasGame = false; audio::sfx(Sfx::Deny); }
+                break;
+#if !CHCW_LEAN
+            case I_OPTIONS: go(Scr::Options); break;
+#endif
+        }
+    }
+}
+
+// A big tile: a letter of the 3x5 font at twice the size.
+static void bigTile(int x, int y, char ch, uint8_t face) {
+    gfx_fillRect(x, y, 12, 12, face);
+    gfx_hline(x, y + 12, 12, FELT_DK);
+    char s[2] = {ch, 0};
+    text35x2(x + 3, y + 1, s, INK);
+}
+
+static void titleRender(uint32_t frame) {
+    feltBackdrop();
+    fillRound(6, 5, 116, 22, 4, NAVY);
+    roundRect(6, 5, 116, 22, 4, GOLD);
+    heading("CROSSWORD", 10);
+    // LUCKY across and ACE down through its C: the tiles drop in, then a
+    // gold lock runs along each word in turn.
+    static const char WORD[] = "LUCKYAE";
+    static const int8_t AT[7][2] = {{0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}, {2, 0}, {2, 2}};
+    int phase = (int)(t % 240);
+    for (uint8_t i = 0; i < 7; i++) {
+        int since = (int)t - 6 - i * 5;
+        if (since < 0) continue;
+        int y = 35 + AT[i][1] * 13, drop = since < 8 ? ((256 - fx::ease(fx::OUT_BOUNCE, since, 8)) * 20) >> 8 : 0;
+        uint8_t face = WHITE;
+        bool across = i < 5, downW = i >= 5 || i == 2;
+        int k = across ? i : i == 5 ? 0 : 2;
+        if (across && phase >= 90 + i * 4 && phase < 200) face = GOLD;
+        if (downW && phase >= 130 + (i == 2 ? 1 : k) * 4 && phase < 200) face = GOLD;
+        if ((across && phase >= 90 + i * 4 && phase < 94 + i * 4)) face = FX_B;
+        bigTile(31 + AT[i][0] * 13, y - drop, WORD[i], face);
+    }
+    uint8_t items[4], n = titleItems(items);
+    int y0 = 126 - n * 15;
+    for (uint8_t i = 0; i < n; i++) menuItem(y0 + i * 15, ITEM[items[i]], i == sel, frame);
+}
+
+// ---------------------------------------------------------------------------
+// The puzzle list
+// ---------------------------------------------------------------------------
+static const char *const LEVEL[6] = {"", "EASY", "MEDIUM", "HARD", "EXPERT", "MASTER"};
+
+static void readRows() {
+    listStale = false;
+    gfx_wait();
+    for (uint8_t i = 0; i < ROWS; i++) {
+        rows[i].size = 0;
+        if (listTop + i < pack::puzzles()) pack::peek((uint8_t)(listTop + i), rows[i].size, rows[i].diff, rows[i].title);
+    }
+}
+
+static void selectUpdate() {
+    uint8_t n = pack::puzzles();
+    if (arduboy.repeat(UP_BUTTON) && listSel > 0) { listSel--; audio::sfx(Sfx::Cursor); }
+    if (arduboy.repeat(DOWN_BUTTON) && listSel + 1 < n) { listSel++; audio::sfx(Sfx::Cursor); }
+    if (listSel >= n) listSel = 0;
+    if (listSel < listTop) { listTop = listSel; listStale = true; }
+    if (listSel >= listTop + ROWS) { listTop = (uint8_t)(listSel - ROWS + 1); listStale = true; }
+    if (listStale) readRows();
+    if (arduboy.justPressed(A_BUTTON)) {
+        if (startPuzzle(listSel)) audio::sfx(Sfx::Select);
+        else audio::sfx(Sfx::Deny);
+    }
+    if (arduboy.justPressed(B_BUTTON)) { audio::sfx(Sfx::Select); go(Scr::Title); }
+}
+
+static void stars(int x, int y, uint8_t n, uint8_t of) {
+    for (uint8_t i = 0; i < of; i++) text35(x + i * 4, y, "*", i < n ? FX_B : FELT_DK);
+}
+
+static void selectRender(uint32_t frame) {
+    feltBackdrop();
+    heading("PUZZLES", 7);
+    char buf[40], *p;
+    centred35(23, pack::name(), FELT_LT);
+    for (uint8_t i = 0; i < ROWS; i++) {
+        uint8_t k = (uint8_t)(listTop + i);
+        if (!rows[i].size) continue;
+        int y = 32 + i * 11;
+        bool on = k == listSel;
+        if (on) {
+            fillRound(7, y - 3, 114, 11, 2, NAVY);
+            roundRect(7, y - 3, 114, 11, 2, (frame & 16) ? FX_B : GOLD);
+        }
+        p = buf;
+        *p++ = (char)('0' + (k + 1) / 10); *p++ = (char)('0' + (k + 1) % 10); *p = 0;
+        text35(11, y, buf, on ? GOLD : SILVER);
+        text35(22, y, rows[i].title, WHITE);
+        uint16_t secs;
+        uint8_t st = starsOf(k, secs);
+        stars(106, y, st, 3);
+    }
+    if (listTop) text35(118, 29, "^", GOLD);
+    // The chosen puzzle: its size and level, and your best.
+    const Row &r = rows[listSel - listTop];
+    if (r.size) {
+        gfx_fillRect(3, 100, 122, 25, INK);
+        gfx_hline(3, 99, 122, GOLD);
+        p = fmtInt(buf, r.size); *p++ = 'X'; p = fmtInt(p, r.size);
+        p = fmtStr(p, "  ");
+        fmtStr(p, LEVEL[r.diff > 5 ? 5 : r.diff]);
+        centred35(104, buf, CYAN);
+        uint16_t secs;
+        uint8_t st = starsOf(listSel, secs);
+        if (pack::current() == 0 && secs) {
+            p = fmtStr(buf, "BEST ");
+            p = fmtTime(p, secs);
+            p = fmtStr(p, "  ");
+            p = fmtInt(p, prog.best[listSel].score * 100);
+            fmtStr(p, "+");
+            centred35(113, buf, GOLD);
+        } else {
+            centred35(113, st ? "SOLVED" : "NOT SOLVED YET", st ? GOLD : SILVER);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Play
+// ---------------------------------------------------------------------------
+enum Pause : uint8_t { P_RESUME, P_REVEAL, P_CHECK, P_SAVE, P_GIVEUP };
+static const char *const PAUSE_ITEM[5] = {"RESUME", "REVEAL LETTER", "CHECK WORD", "SAVE + QUIT", "GIVE UP"};
+
+static uint8_t pauseItems(uint8_t *items) {
+    uint8_t n = 0;
+    items[n++] = P_RESUME;
+    items[n++] = P_REVEAL;
+    if (!game::st.checking) items[n++] = P_CHECK;
+    items[n++] = P_SAVE;
+    items[n++] = P_GIVEUP;
+    return n;
+}
+
+static void playUpdate() {
+    if (overlay == PAUSE) {
+        uint8_t items[5], n = pauseItems(items);
+        if (arduboy.justPressed(B_BUTTON) || arduboy.justPressed(START_BUTTON)) { overlay = NONE; return; }
+        if (!menuNav(n)) return;
+        audio::sfx(Sfx::Select);
+        overlay = NONE;
+        switch (items[sel]) {
+            case P_REVEAL: stage::reveal(); break;
+            case P_CHECK:  stage::checkWord(); break;
+            case P_SAVE:   persist(true); go(Scr::Title); break;
+            case P_GIVEUP: persist(false); go(Scr::Select); break;
+            default: break;
+        }
+        return;
+    }
+    if (overlay == RESULT) {
+        if (resultT < 250) resultT++;
+        // The stars come in one at a time.
+        for (uint8_t i = 0; i < result.stars; i++)
+            if (resultT == 40 + i * 14) {
+                audio::sfx(Sfx::Star);
+                fx::burst(fx::STAR, 64 + (i * 2 - (result.stars - 1)) * 9, 94, 8, 30, GOLD);
+            }
+        if (resultT > 30 && arduboy.justPressed(A_BUTTON)) {
+            audio::sfx(Sfx::Select);
+            if (playing + 1 < pack::puzzles()) { listSel = (uint8_t)(playing + 1); }
+            go(Scr::Select);
+        }
+        if (resultT > 30 && arduboy.justPressed(B_BUTTON)) { audio::sfx(Sfx::Select); go(Scr::Title); }
+        stage::update();
+        return;
+    }
+    game::tick();
+    if (game::st.solved) {
+        if (!resultDone) {
+            // The puzzle is done: the records are written while the show starts.
+            resultDone = true;
+            result = game::finish();
+            record(result);
+            persist(false);
+        }
+        stage::update();
+        if (stage::solvedShown()) { overlay = RESULT; resultT = 0; }
+        return;
+    }
+    int dx = arduboy.repeat(RIGHT_BUTTON) ? 1 : arduboy.repeat(LEFT_BUTTON) ? -1 : 0;
+    int dy = arduboy.repeat(DOWN_BUTTON) ? 1 : arduboy.repeat(UP_BUTTON) ? -1 : 0;
+    if (stage::board) {
+        if (dx || dy) { stage::moveKey(dx, dy); audio::sfx(Sfx::Cursor); }
+        if (arduboy.justPressed(A_BUTTON)) stage::press();
+        else if (arduboy.repeat(B_BUTTON, 24, 8)) stage::rubOut();
+        else if (arduboy.justPressed(START_BUTTON)) stage::closeBoard();
+        else if (arduboy.justPressed(SELECT_BUTTON)) stage::flip();
+    } else {
+        if (dx || dy) {
+            if (stage::move(dx, dy)) audio::sfx(Sfx::Cursor);
+        }
+        if (arduboy.justPressed(A_BUTTON)) stage::openBoard();
+        else if (arduboy.justPressed(B_BUTTON)) { stage::flip(); audio::sfx(Sfx::Cursor); }
+        else if (arduboy.justPressed(SELECT_BUTTON)) { stage::nextClue(); audio::sfx(Sfx::Select); }
+        else if (arduboy.justPressed(START_BUTTON)) { overlay = PAUSE; sel = 0; audio::sfx(Sfx::Select); }
+    }
+    stage::update();
+}
+
+static void playRender(uint32_t frame) {
+    stage::render(frame);
+    char buf[40], *p;
+    if (overlay == PAUSE) {
+        uint8_t items[5], n = pauseItems(items);
+        int y0 = 52 - n * 7;
+        fillRound(4, y0 - 7, 120, n * 14 + 11, 3, NAVY);
+        roundRect(4, y0 - 7, 120, n * 14 + 11, 3, GOLD);
+        for (uint8_t i = 0; i < n; i++) {
+            int y = y0 + i * 14;
+            if (i == sel) fillRound(8, y - 3, 112, 13, 3, INK);
+            const char *s = PAUSE_ITEM[items[i]];
+            text35x2(64 - text35x2Width(s) / 2, y - 1, s, i == sel ? FX_B : WHITE);
+        }
+    } else if (overlay == RESULT) {
+        panel(30, 86);
+        centred2(35, puz::title, GOLD);
+        p = fmtStr(buf, "TIME ");
+        p = fmtTime(p, result.seconds);
+        p = fmtStr(p, "  PAR ");
+        fmtTime(p, result.par);
+        centred35(52, buf, WHITE);
+        // The score counts up.
+        uint32_t shown = resultT >= 30 ? result.score : (uint32_t)result.score * resultT / 30;
+        p = fmtStr(buf, "SCORE ");
+        fmtInt(p, (int32_t)shown);
+        centred2(61, buf, FX_B);
+        fmtStr(buf, result.perfect ? "PERFECT! +1000" : result.clean ? "NO REVEALS +250" : "");
+        centred35(78, buf, CYAN);
+        for (uint8_t i = 0; i < 3; i++) {
+            bool on = i < result.stars && resultT >= 40 + i * 14;
+            text35x2(64 - 27 + i * 18 + 6, 87, "*", on ? FX_B : NAVY);
+            if (!on) text35x2(64 - 27 + i * 18 + 6, 87, "*", FELT_DK);
+        }
+        if (newBest && (frame & 16)) centred35(101, "NEW BEST!", FX_A);
+        centred35(109, "A NEXT   B MENU", SILVER);
+        fx::drawParticles(2);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Options (device debug builds leave the screen out to fit the protocol)
+// ---------------------------------------------------------------------------
+#if !CHCW_LEAN
+enum Opt : uint8_t { O_SOUND, O_FELT, O_CHECK, O_SKIP, O_BACK, OPT_COUNT };
+static const char *const OPT_TEXT[OPT_COUNT] = {
+    "SOUND|OFF|ON", "FELT|GREEN|BLUE|RED|PURPLE", "CHECKING|ON|OFF", "TYPING|SKIPS|STEPS", "BACK",
+};
+static uint8_t &optByte(uint8_t i) { return ((uint8_t *)&opt)[i]; }
+
+static uint8_t optField(const char *s, uint8_t k, char *buf) {
+    uint8_t n = 0;
+    for (;;) {
+        const char *e = s;
+        while (*e && *e != '|') e++;
+        if (n == k) { uint8_t len = (uint8_t)(e - s); memcpy(buf, s, len); buf[len] = 0; }
+        n++;
+        if (!*e) return n;
+        s = e + 1;
+    }
+}
+
+static void optionsUpdate() {
+    if (arduboy.repeat(UP_BUTTON)) { sel = (uint8_t)((sel + OPT_COUNT - 1) % OPT_COUNT); audio::sfx(Sfx::Cursor); }
+    if (arduboy.repeat(DOWN_BUTTON)) { sel = (uint8_t)((sel + 1) % OPT_COUNT); audio::sfx(Sfx::Cursor); }
+    int d = arduboy.justPressed(RIGHT_BUTTON) ? 1 : (arduboy.justPressed(LEFT_BUTTON) ? -1 : 0);
+    if (arduboy.justPressed(A_BUTTON) && sel != O_BACK) d = 1;
+    if (d && sel != O_BACK) {
+        char tmp[12];
+        uint8_t n = (uint8_t)(optField(OPT_TEXT[sel], 0, tmp) - 1);
+        uint8_t &f = optByte(sel);
+        f = (uint8_t)((f + n + d) % n);
+        applyOptions();
+        audio::sfx(Sfx::Coin);
+    }
+    if ((arduboy.justPressed(A_BUTTON) && sel == O_BACK) || arduboy.justPressed(B_BUTTON)) {
+        audio::sfx(Sfx::Select);
+        persist(hasGame);
+        go(Scr::Title);
+    }
+}
+
+static void optionsRender(uint32_t frame) {
+    feltBackdrop();
+    heading("OPTIONS", 8);
+    for (uint8_t i = 0; i < OPT_COUNT; i++) {
+        int y = 30 + i * 15;
+        char label[12], value[12];
+        optField(OPT_TEXT[i], 0, label);
+        if (i == sel) {
+            fillRound(8, y - 4, 112, 17, 3, NAVY);
+            roundRect(8, y - 4, 112, 17, 3, (frame & 16) ? FX_B : GOLD);
+        }
+        if (i == O_BACK) { text35x2(64 - text35x2Width(label) / 2, y, label, i == sel ? GOLD : WHITE); continue; }
+        text35x2(13, y, label, i == sel ? GOLD : WHITE);
+        optField(OPT_TEXT[i], (uint8_t)(optByte(i) + 1), value);
+        text35x2(116 - text35x2Width(value), y, value, i == sel ? WHITE : FELT_LT);
+    }
+    centred35(109, opt.check ? "NO HELP: JUDGED WHEN FULL" : "RIGHT WORDS LOCK IN GOLD", SILVER);
+    centred35(116, "3X5 FONT: PRESS PLAY ON TAPE", SILVER);
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// Debug protocol hooks (tools/chsim/chdrive.py 'say')
+// ---------------------------------------------------------------------------
+#if CHCW_DEBUG
+//   G <i> [pack]        start puzzle i of a pack (0, the built-in one, by default)
+//   H                   STATE scr=<T|S|P|O> ov=<overlay> cur=<cell> down=<0|1> board=<0|1> key=<k>
+//                       score= streak= locked= words= solved= sec= n=
+//   W                   the next word not done: WORD <w> <cell> <down> <answer> <entered, . for none>
+//   C <cell> <down>     put the cursor there
+//   Z <k>               the grid filled in but for the cells of the last k words (no show)
+//   U <seconds>         put the clock forward
+//   J <T|S|O>           jump to title / the puzzle list / options
+//   X <0|1>             (simulator) put the card in / pull it out
+static bool debugHook(char cmd, const char *args) {
+    char buf[120], *p;
+    switch (cmd) {
+        case 'G': {
+            uint8_t i = (uint8_t)dbg::parseNum(args, 10), pk = (uint8_t)dbg::parseNum(args, 10);
+            gfx_wait();
+            if (pk) pack::scan();
+            if (!pack::select(pk) || !startPuzzle(i)) return false;
+            fadeOut = 1;
+            return true;
+        }
+        case 'H': {
+            static const char SCR[] = "TSPO";
+            p = fmtStr(buf, "STATE scr=");
+            *p++ = SCR[(int)cur];
+            p = fmtInt(fmtStr(p, " ov="), overlay);
+            p = fmtInt(fmtStr(p, " cur="), stage::cur);
+            p = fmtInt(fmtStr(p, " down="), stage::down);
+            p = fmtInt(fmtStr(p, " board="), stage::board);
+            p = fmtInt(fmtStr(p, " key="), stage::key);
+            p = fmtInt(fmtStr(p, " score="), game::st.score);
+            p = fmtInt(fmtStr(p, " streak="), game::st.streak);
+            p = fmtInt(fmtStr(p, " locked="), puz::lockedWords());
+            p = fmtInt(fmtStr(p, " words="), puz::nWords);
+            p = fmtInt(fmtStr(p, " solved="), game::st.solved);
+            p = fmtInt(fmtStr(p, " sec="), game::seconds());
+            p = fmtInt(fmtStr(p, " n="), puz::n);
+            p = fmtInt(fmtStr(p, " busy="), stage::busy());
+            fmtStr(p, "\n");
+            dbg::print(buf);
+            return true;
+        }
+        case 'W': {
+            for (uint8_t w = 0; w < puz::nWords; w++) {
+                if (puz::wordFull(w) && puz::wordRight(w)) continue;
+                p = fmtInt(fmtStr(buf, "WORD "), w);
+                p = fmtInt(fmtStr(p, " "), puz::wStart[w]);
+                p = fmtInt(fmtStr(p, " "), puz::isDown(w));
+                *p++ = ' ';
+                for (uint8_t k = 0; k < puz::wLen[w]; k++) *p++ = (char)('A' + puz::sol[puz::cellOf(w, k)] - 1);
+                *p++ = ' ';
+                for (uint8_t k = 0; k < puz::wLen[w]; k++) {
+                    uint8_t v = puz::cell[puz::cellOf(w, k)] & puz::LETTER;
+                    *p++ = v ? (char)('A' + v - 1) : '.';
+                }
+                fmtStr(p, "\n");
+                dbg::print(buf);
+                return true;
+            }
+            dbg::print("WORD none\n");
+            return true;
+        }
+        case 'C': {
+            uint8_t c = (uint8_t)dbg::parseNum(args, 10);
+            stage::setCursor(c, dbg::parseNum(args, 10) != 0);
+            return true;
+        }
+        case 'Z': {
+            uint8_t keep = (uint8_t)dbg::parseNum(args, 10);
+            for (uint8_t w = 0; w < puz::nWords; w++)
+                for (uint8_t k = 0; k < puz::wLen[w]; k++) {
+                    uint8_t c = puz::cellOf(w, k);
+                    puz::cell[c] = w + keep < puz::nWords ? puz::sol[c] : 0;
+                }
+            game::Record r;
+            game::save(r);
+            game::load(r);
+            return true;
+        }
+        case 'U':
+            game::st.ticks += dbg::parseNum(args, 10) * 60;
+            return true;
+        case 'J':
+            if (*args == 'T') go(Scr::Title);
+            else if (*args == 'S') go(Scr::Select);
+            else if (*args == 'O') go(Scr::Options);
+            else return false;
+            return true;
+#ifdef CHSIM
+        case 'X':
+            sim_cardEject(*args == '1');
+            return true;
+#endif
+    }
+    return false;
+}
+#endif
+
+// ---------------------------------------------------------------------------
+void begin() {
+    opt.sound = 1;
+    save::load(opt, prog, hasGame);
+    applyOptions();
+    pack::select(0);
+#if CHCW_DEBUG
+    dbg::hook = debugHook;
+#endif
+    enter(Scr::Title);
+}
+
+void update() {
+    t++;
+    if (fadeOut) {
+        pal::setFade((uint8_t)((fadeOut - 1) * 2));
+        if (--fadeOut == 0) enter(pending);
+        fx::update();
+        return;
+    }
+    if (fadeIn) { fadeIn--; pal::setFade((uint8_t)(16 - fadeIn * 2)); }
+    switch (cur) {
+        case Scr::Title:   titleUpdate(); break;
+        case Scr::Select:  selectUpdate(); break;
+        case Scr::Play:    playUpdate(); break;
+#if !CHCW_LEAN
+        case Scr::Options: optionsUpdate(); break;
+#else
+        default: break;
+#endif
+    }
+    fx::update();
+}
+
+void render(uint32_t frame) {
+    switch (cur) {
+        case Scr::Title:   titleRender(frame); break;
+        case Scr::Select:  selectRender(frame); break;
+        case Scr::Play:    playRender(frame); break;
+#if !CHCW_LEAN
+        case Scr::Options: optionsRender(frame); break;
+#else
+        default: break;
+#endif
+    }
+}
+
+}  // namespace screens

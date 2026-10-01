@@ -1,0 +1,42 @@
+// The play screen: the grid, the clue under it, the score beside it, the
+// letter board that slides up to type on, and the show when a word locks.
+//
+// The whole grid is always in view (8 px cells up to 13 x 13, 7 px for 14
+// and 15) except while the letter board is up, when it scrolls to keep the
+// word being typed above the board. The screens (src/states) own the
+// buttons; this owns the cursor and what it does.
+#pragma once
+#include <stdint.h>
+#include "../game/Game.h"
+
+namespace stage {
+
+constexpr uint8_t KEYS = 27, KEY_COLS = 9, KEY_DEL = 26;     // A..Z and rub out
+
+extern uint8_t cur;                 // the cell under the cursor
+extern bool down;                   // the way the word being worked on runs
+extern bool board;                  // the letter board is up
+extern uint8_t key;                 // the key under the glove
+extern bool stepAll;                // typing moves cell by cell (else on to the next empty one)
+
+void enter();                       // a puzzle was loaded (or a saved one put back): onto the screen
+void setCursor(uint8_t cell, bool down);
+uint8_t word();                     // the word under the cursor (puz::NONE: none)
+
+bool move(int dx, int dy);          // the cursor to the next open cell that way
+void flip();                        // across <-> down
+void nextClue();                    // the cursor to the next word not done yet
+void openBoard();
+void closeBoard();
+void moveKey(int dx, int dy);
+void press();                       // the key under the glove: a letter, or rub out
+void rubOut();                      // the letter under the cursor, else the one before
+void reveal();                      // the cursor's letter (the pause menu)
+void checkWord();                   // checking off: rub out the word's wrong letters
+
+void update();                      // once per logic tick
+void render(uint32_t frame);
+bool busy();                        // a word is locking, or the puzzle's last show is on
+bool solvedShown();                 // the end-of-puzzle show has had its time
+
+}  // namespace stage

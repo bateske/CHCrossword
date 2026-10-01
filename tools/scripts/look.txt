@@ -1,0 +1,27 @@
+# Every screen, for looking at.
+wait 60
+snap title
+tap A
+wait 20
+snap select
+tap A
+wait 30
+snap play
+tap RIGHT
+tap DOWN
+tap A
+wait 12
+snap board
+type RE
+wait 4
+snap typing
+tap START
+wait 10
+tap START
+wait 4
+snap pause
+tap B
+wait 4
+say J O
+wait 20
+snap options

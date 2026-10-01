@@ -1,0 +1,18 @@
+# Build output
+build/
+tools/chsim/build/
+tools/tests/build/
+out/
+
+# Word lists fetched by tools/puzzles/fill.py
+tools/puzzles/data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local working files (art mockups, editor and OS clutter)
+docs/mockups/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,108 @@
+title: FIFTEEN TEST
+difficulty: 3
+grid:
+SCUM#THRUST#AND
+PANE#HEARER#LIE
+ACTA#ENTIRE#ICE
+CHINA#REC#ASKED
+EEL#DAYS#OTHERS
+###ODD##IDEA###
+BEEN#OPENED#NEW
+EYRE##ANT##WISH
+TEA#WISDOM#ALSO
+###MATT##AAS###
+ABBOTS#SAYS#DOE
+FRANC#ALL#KNOWN
+TAS#HALIDE#AMIS
+EVE#ENAMEL#MENU
+RED#DINERS#EDGE
+across:
+1. Placeholder clue of 4 letters
+5. Placeholder clue of 6 letters
+11. Placeholder clue of 3 letters
+14. Placeholder clue of 4 letters
+15. Placeholder clue of 6 letters
+16. Placeholder clue of 3 letters
+17. Placeholder clue of 4 letters
+18. Placeholder clue of 6 letters
+19. Placeholder clue of 3 letters
+20. Placeholder clue of 5 letters
+22. Placeholder clue of 3 letters
+23. Placeholder clue of 5 letters
+25. Placeholder clue of 3 letters
+26. Placeholder clue of 4 letters
+28. Placeholder clue of 6 letters
+29. Placeholder clue of 3 letters
+30. Placeholder clue of 4 letters
+31. Placeholder clue of 4 letters
+34. Placeholder clue of 6 letters
+37. Placeholder clue of 3 letters
+40. Placeholder clue of 4 letters
+41. Placeholder clue of 3 letters
+42. Placeholder clue of 4 letters
+43. Placeholder clue of 3 letters
+44. Placeholder clue of 6 letters
+47. Placeholder clue of 4 letters
+48. Placeholder clue of 4 letters
+49. Placeholder clue of 3 letters
+51. Placeholder clue of 6 letters
+54. Placeholder clue of 4 letters
+56. Placeholder clue of 3 letters
+59. Placeholder clue of 5 letters
+60. Placeholder clue of 3 letters
+61. Placeholder clue of 5 letters
+63. Placeholder clue of 3 letters
+64. Placeholder clue of 6 letters
+67. Placeholder clue of 4 letters
+68. Placeholder clue of 3 letters
+69. Placeholder clue of 6 letters
+70. Placeholder clue of 4 letters
+71. Placeholder clue of 3 letters
+72. Placeholder clue of 6 letters
+73. Placeholder clue of 4 letters
+down:
+1. Placeholder clue of 5 letters
+2. Placeholder clue of 5 letters
+3. Placeholder clue of 5 letters
+4. Placeholder clue of 4 letters
+5. Placeholder clue of 3 letters
+6. Placeholder clue of 5 letters
+7. Placeholder clue of 5 letters
+8. Placeholder clue of 4 letters
+9. Placeholder clue of 3 letters
+10. Placeholder clue of 7 letters
+11. Placeholder clue of 5 letters
+12. Placeholder clue of 5 letters
+13. Placeholder clue of 5 letters
+21. Placeholder clue of 3 letters
+24. Placeholder clue of 3 letters
+27. Placeholder clue of 3 letters
+28. Placeholder clue of 3 letters
+29. Placeholder clue of 3 letters
+30. Placeholder clue of 4 letters
+31. Placeholder clue of 3 letters
+32. Placeholder clue of 3 letters
+33. Placeholder clue of 3 letters
+35. Placeholder clue of 4 letters
+36. Placeholder clue of 3 letters
+37. Placeholder clue of 3 letters
+38. Placeholder clue of 3 letters
+39. Placeholder clue of 3 letters
+42. Placeholder clue of 3 letters
+44. Placeholder clue of 7 letters
+45. Placeholder clue of 3 letters
+46. Placeholder clue of 3 letters
+48. Placeholder clue of 3 letters
+50. Placeholder clue of 3 letters
+51. Placeholder clue of 5 letters
+52. Placeholder clue of 5 letters
+53. Placeholder clue of 5 letters
+54. Placeholder clue of 5 letters
+55. Placeholder clue of 5 letters
+56. Placeholder clue of 5 letters
+57. Placeholder clue of 5 letters
+58. Placeholder clue of 5 letters
+60. Placeholder clue of 4 letters
+62. Placeholder clue of 4 letters
+65. Placeholder clue of 3 letters
+66. Placeholder clue of 3 letters

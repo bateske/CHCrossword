@@ -1,0 +1,35 @@
+# A puzzle from the list to its last word: locks, a wrong word, the end.
+say G 0
+wait 20
+expect scr=P words=70 locked=0 score=0
+solve 2
+expect locked=2 score=85
+snap two
+# A wrong word: 15 across (EVEN) typed as EVIL.
+say C 26 0
+wait 2
+tap A
+wait 10
+type EVIL
+wait 6
+snap wrong
+expect locked=2 score=65 streak=0 board=0
+wait 40
+solve 1
+snap fixed
+solve 20
+snap midway
+state
+say Z 1
+wait 4
+snap nearly
+solve
+wait 30
+snap solved
+wait 160
+snap result
+state
+expect solved=1 locked=70
+tap A
+wait 20
+snap after
