@@ -1,0 +1,80 @@
+title: ARCADE PALACE
+difficulty: 2
+grid:
+FLASH###SPEAR
+LINKED##EAGLE
+ENTIRE#UNTOLD
+WEEP#MONTH###
+###PROUD#SANG
+CAMEO#TOP#GOO
+AWARD###ARENA
+RAT#END#CADET
+EYES#AIDED###
+###TIMER#IDOL
+PALACE#ARCADE
+UNITE##GUARDS
+TYPED###BLESS
+across:
+1. Camera's burst of light
+6. Asparagus stalk
+11. Joined, as in a chain
+13. Two under par
+14. Whole
+15. Too many to count
+16. Shed tears
+17. March or May
+19. Like a peacock, they say
+21. Carried a tune
+25. Star's brief film appearance
+28. Spinning toy
+30. Sticky stuff
+31. Oscar or Emmy
+32. Where the big game is played
+34. Squealer
+35. Finale
+38. Academy student
+39. Snake _ (roll of two)
+41. Lent a hand to
+43. Kitchen countdown gadget
+45. Pop star, to fans
+49. King's home
+52. Pinball parlor
+54. Join forces
+55. Sentries
+56. Used a keyboard
+57. "_ you!" (reply to a sneeze)
+down:
+1. Went by jet
+2. What an actor may forget
+3. Pay to play, in poker
+4. Boat's captain
+5. "His and _"
+6. Mailed
+7. Garden walkways
+8. Big head?
+9. "_ in" (bet everything)
+10. Roulette color
+12. Trial version, briefly
+15. Ctrl+Z command
+18. Umpire's call
+20. Sat in the saddle
+22. Like fine cheese
+23. Not a single one
+24. Bearded farm animal
+25. "Handle with _"
+26. Not at home
+27. Chess ending
+29. Walk back and forth
+33. Extreme
+36. Smith or Jones
+37. Cube with dots
+40. Ohio or Iowa
+42. Total bore, slangily
+44. Frosted, as a cake
+46. "Truth or _"
+47. Chances, to a bettor
+48. Not as much
+49. Set down
+50. "Pick a card, _ card"
+51. Back talk
+53. What to do to a genie's lamp

@@ -113,15 +113,18 @@ static void testRules() {
     game::st.ticks += 20 * 60;
     e = typeWord(3);
     CHECK(e.points[0] == 20 * puz::wLen[3]);
-    // A wrong word: 20 off, the streak gone, the letters stay.
-    before = game::st.score;
+    // A wrong word (in an empty grid, so nothing else completes): 20 off,
+    // the streak gone, the letters stay.
+    CHECK(open(0));
+    game::start(true);
+    game::st.score = 100;
+    game::st.streak = 5;
     e = typeWord(4, "x..............");
     CHECK(e.nLock == 0 && e.nWrong == 1 && e.wrong[0] == 4 && game::st.streak == 0 && game::st.misses == 1);
-    CHECK(game::st.score == before - 20 && puz::wordFull(4) && !puz::wordLocked(4));
+    CHECK(game::st.score == 80 && puz::wordFull(4) && !puz::wordLocked(4));
     // Put right, it locks at x1.
-    game::st.ticks += 20 * 60;
     e = game::place(puz::cellOf(4, 0), puz::sol[puz::cellOf(4, 0)]);
-    CHECK(e.nLock >= 1 && e.points[0] == 10 * puz::wLen[4]);
+    CHECK(e.nLock == 1 && e.points[0] == 10 * puz::wLen[4] && game::st.streak == 1);
     // Rubbing out an unlocked letter.
     int free = -1;
     for (int c = 0; c < puz::n * puz::n; c++)

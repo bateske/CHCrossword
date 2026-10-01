@@ -40,6 +40,8 @@ struct Row { char title[puz::TITLE_MAX + 1]; uint8_t size, diff; };
 static Row rows[ROWS];
 static uint8_t listSel, listTop;
 static bool listStale;               // the rows need reading again
+static bool rescan;                  // look at the card again on the way into the list
+static uint32_t lastPack;            // the pack last chosen there (its id)
 static uint8_t playing;              // the puzzle in play: its place in the pack
 
 // Play-screen overlays.
@@ -65,7 +67,18 @@ static void enter(Scr s) {
     fadeIn = 8;
     fx::clear();
     if (s == Scr::Title) audio::sfx(Sfx::Title);
-    if (s == Scr::Select) listStale = true;
+    if (s == Scr::Select) {
+        listStale = true;
+        if (rescan) {
+            // The screen is black between fades: the moment to wake the card
+            // (tens of milliseconds) and see which packs are on it.
+            rescan = false;
+            gfx_wait();
+            pack::scan();
+            if (!pack::find(lastPack)) pack::select(0);
+            if (pack::id() != lastPack) listSel = listTop = 0;
+        }
+    }
 }
 
 // Save the options and the records, and the puzzle in play if there is one.
@@ -226,6 +239,7 @@ static bool continueGame() {
     if (!save::loadGame(r)) return false;
     if (r.source) pack::scan();
     if (!pack::find(r.packId) || !pack::open(r.index)) return false;
+    lastPack = r.packId;
     playing = r.index;
     game::load(r);
     stage::enter();
@@ -242,7 +256,7 @@ static void titleUpdate() {
     if (menuNav(n)) {
         audio::sfx(Sfx::Select);
         switch (items[sel]) {
-            case I_PLAY: go(Scr::Select); break;
+            case I_PLAY: rescan = true; go(Scr::Select); break;
             case I_CONTINUE:
                 if (!continueGame()) { hasGame = false; audio::sfx(Sfx::Deny); }
                 break;
@@ -302,8 +316,24 @@ static void readRows() {
     }
 }
 
+// Another pack (or back to the built-in one if the card has gone).
+static void choosePack(uint8_t p) {
+    gfx_wait();
+    pack::select(p);
+    lastPack = pack::id();
+    listSel = listTop = 0;
+    listStale = true;
+}
+
 static void selectUpdate() {
-    uint8_t n = pack::puzzles();
+    if (pack::count() > 1) {
+        int d = arduboy.justPressed(RIGHT_BUTTON) ? 1 : arduboy.justPressed(LEFT_BUTTON) ? -1 : 0;
+        if (d) {
+            choosePack((uint8_t)((pack::current() + pack::count() + d) % pack::count()));
+            audio::sfx(Sfx::Coin);
+        }
+    }
+    uint8_t n = pack::puzzles(), was = pack::current();
     if (arduboy.repeat(UP_BUTTON) && listSel > 0) { listSel--; audio::sfx(Sfx::Cursor); }
     if (arduboy.repeat(DOWN_BUTTON) && listSel + 1 < n) { listSel++; audio::sfx(Sfx::Cursor); }
     if (listSel >= n) listSel = 0;
@@ -314,6 +344,8 @@ static void selectUpdate() {
         if (startPuzzle(listSel)) audio::sfx(Sfx::Select);
         else audio::sfx(Sfx::Deny);
     }
+    // The card pulled out under us: the built-in list.
+    if (pack::current() != was) { choosePack(0); readRows(); audio::sfx(Sfx::Deny); }
     if (arduboy.justPressed(B_BUTTON)) { audio::sfx(Sfx::Select); go(Scr::Title); }
 }
 
@@ -325,7 +357,18 @@ static void selectRender(uint32_t frame) {
     feltBackdrop();
     heading("PUZZLES", 7);
     char buf[40], *p;
-    centred35(23, pack::name(), FELT_LT);
+    // The pack, with arrows if there are others; or what is wrong with the card.
+    static const char *const CARD[4] = {"", "CARD: CANNOT READ IT", "CARD: FORMAT IT AS FAT32", "CARD: NO PACKS IN CHCW"};
+    if (pack::count() > 1) {
+        int w = text35Width(pack::name()), bob = (frame >> 3) & 1;
+        centred35(23, pack::name(), WHITE);
+        text35(64 - w / 2 - 8 - bob, 23, "<", GOLD);
+        text35(64 + w / 2 + 6 + bob, 23, ">", GOLD);
+    } else if (pack::card() == pack::CARD_NONE || pack::card() == pack::CARD_OK) {
+        centred35(23, pack::name(), FELT_LT);
+    } else {
+        centred35(23, CARD[pack::card()], SKIN);
+    }
     for (uint8_t i = 0; i < ROWS; i++) {
         uint8_t k = (uint8_t)(listTop + i);
         if (!rows[i].size) continue;
@@ -574,6 +617,7 @@ static bool debugHook(char cmd, const char *args) {
             gfx_wait();
             if (pk) pack::scan();
             if (!pack::select(pk) || !startPuzzle(i)) return false;
+            lastPack = pack::id();
             fadeOut = 1;
             return true;
         }
@@ -660,6 +704,7 @@ void begin() {
     save::load(opt, prog, hasGame);
     applyOptions();
     pack::select(0);
+    lastPack = pack::id();
 #if CHCW_DEBUG
     dbg::hook = debugHook;
 #endif

@@ -3,11 +3,12 @@
 //
 // Written from the Microsoft FAT specification (BPB fields, FAT type from
 // the cluster count, 8.3 directory entries, end-of-chain marks) and the MBR
-// partition table layout. It only turns a file name into LBA runs, once, while
-// booting: after that files are read and written as raw card blocks through
-// their run lists, so there is no FAT write code, no cache and no file
-// object. Every call borrows the caller's 512 B buffer (4-byte aligned) and
-// clobbers it; the volume state is 20 B.
+// partition table layout. It only turns a file name into LBA runs: after
+// that a file is read as raw card blocks through its run list, so there is
+// no FAT write code, no cache and no file object. Every call borrows the
+// caller's 512 B buffer (4-byte aligned) and clobbers it; the volume state
+// is 24 B. Here it also finds a folder in the root directory and the files
+// in it that match a pattern (the packs: CHCW/*.CWD).
 #pragma once
 #include <stdint.h>
 
@@ -31,10 +32,16 @@ struct File { uint32_t cluster, size; };      // first cluster, size in bytes
 // MBR with a type 07 partition and no FAT one, is E_EXFAT.
 int8_t mount(uint8_t *buf);
 
-// A file in the root directory by its 8.3 name as the directory stores it:
-// 11 characters, capitals, the name and the extension padded with spaces
-// ("WORDS   DIC"). Long-name entries are skipped.
-int8_t find(const char *name, File &f, uint8_t *buf);
+// A folder in the root directory by its 8.3 name as the directory stores
+// it: 11 characters, capitals, the name and the extension padded with
+// spaces ("CHCW       "). Long-name entries are skipped.
+int8_t folder(const char *name, File &dir, uint8_t *buf);
+
+// The (skip + 1)th file in a folder whose short name fits a pattern of 11
+// characters, '?' standing for any ("????????CWD"). Its 11-character name
+// is copied to nameOut (no NUL). Folders, hidden files and volume labels
+// never match. E_NOTFOUND: there are no more.
+int8_t match(const File &dir, const char *pattern, uint8_t skip, File &f, char *nameOut, uint8_t *buf);
 
 // Walks f's cluster chain once and returns its extents: up to maxRuns runs
 // of consecutive blocks, the last one trimmed to the file's size (a file of

@@ -1,0 +1,76 @@
+title: RAT RACE
+difficulty: 3
+grid:
+##SWAMP#ACTS#
+#MIRROR#FRIAR
+BELIEVE#TABLE
+UNIT#EYE#DIAL
+RACE###MALADY
+SCORE#SIRE###
+TEN#PLATE#RAT
+###DIET#ABOVE
+ETHICS###AMEN
+REAP#SAD#SAND
+ARBOR#RATINGS
+SMILE#TRANCE#
+#STEP#SENSE##
+across:
+1. Overwhelm, as with work
+6. Play parts?
+10. It reflects well on you?
+11. Tuck, for one
+13. Buy, so to speak
+14. Put off, as a motion
+15. Inch or ounce
+16. Storm's calm center
+18. Face of a watch
+19. Dash, for one
+20. Ailment
+22. Twenty, to Lincoln
+24. Father, in the stable
+25. Card just under the jack
+26. Home, on a diamond
+28. Squealer
+31. Losing plan?
+32. Higher than
+34. Study of right and wrong
+37. Last word of a prayer
+38. Bring in the harvest
+39. Blue
+42. Hourglass filler
+43. Shady garden shelter
+45. TV network's numbers
+47. Photographer's request
+48. Hypnotist's goal
+49. One of a flight?
+50. Smell or taste
+down:
+1. Element in computer chips
+2. One with a novel idea?
+3. "You _ here" (map words)
+4. Chess turn
+5. Mouse, to an owl
+6. Toward the stern
+7. Rock-a-bye spot
+8. Shinbone
+9. Caesar or Cobb
+10. Threat
+12. Count (on)
+13. Pop like a balloon
+17. Give off
+21. Length times width
+23. Long heroic poem
+24. Took a chair
+27. Minus
+28. Love story
+29. Get even for
+30. Works the bar, say
+31. Magnet's pair of opposite poles
+33. Sinks
+34. Long stretches of history
+35. Contract conditions
+36. It's hard to break
+40. Crafts' partner
+41. Truth alternative
+44. Gym count
+46. Beach souvenir?

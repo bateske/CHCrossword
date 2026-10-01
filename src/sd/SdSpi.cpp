@@ -1,7 +1,8 @@
 // SdSpi.cpp - see SdSpi.h. From HypeRunner's src/sd/SdSpi.cpp (MIT, clean
 // room: written from the SD Physical Layer Simplified Specification, chapter
 // 7, and the CH32X035 reference manual), reduced to polled single-block
-// reads. The simulator's stand-in is tools/chsim/host/sd_host.cpp.
+// reads. The simulator's stand-in is tools/chsim/host/sd_host.cpp, the host
+// tests' is in tools/tests/test_card.cpp.
 #pragma GCC optimize("Os", "no-ipa-sra")
 #if !defined(CHSIM) && !defined(CHTEST)
 #include <Arduino.h>
@@ -14,7 +15,8 @@ static const uint32_t SPI_MASTER = (1u << 2) | (1u << 8) | (1u << 9);   // MSTR 
 static const uint32_t SPE = 1u << 6, RXNE = 1u << 0, BSY = 1u << 7;
 static const uint8_t BR_IDENT = 7;              // 48 MHz / 256 = 187.5 kHz
 static const uint8_t BR_RUN = 1;                // 12 MHz: polled bytes are slower than the wire anyway
-static const uint32_t TOKEN_US = 300000, BUSY_US = 300000, INIT_US = 1000000;
+// (A block never written can take some cards 300-770 ms to deliver the first time.)
+static const uint32_t TOKEN_US = 1000000, BUSY_US = 300000, INIT_US = 1000000;
 
 static uint8_t br;
 static bool hc;                                 // block addressing (SDHC/SDXC)

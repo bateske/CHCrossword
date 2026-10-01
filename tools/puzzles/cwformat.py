@@ -396,7 +396,7 @@ def fnv1a(data):
 def make_pack(name, blobs):
     if not 1 <= len(blobs) <= MAX_COUNT:
         raise Bad(f"a pack holds 1..{MAX_COUNT} puzzles")
-    name = name.upper()[:12]
+    name = name.upper()[:11]                   # (and a NUL: the game reads it as a string)
     off = 28 + 4 * len(blobs)
     index = b""
     for b in blobs:

@@ -6,10 +6,13 @@ TEMPLATE is a text file of grid rows: '#' black, '.' open, a letter = fixed
 (theme words are typed into the template). Prints the filled grid and its
 words, ready to paste into a puzzle source; the clues are written by hand.
 
-Words: ENABLE (public domain), kept to the commonest by a Google Books
-count list (data/, fetched once; build-time only), less a block list.
+Words: ENABLE (public domain), kept to the commonest by the wordfreq
+package's figures (`pip install wordfreq`, or `pip install --target
+tools/puzzles/data/pylib wordfreq`; build-time only), less a block list.
+"--top N" keeps roughly the N commonest words of the language.
 """
 import argparse
+import math
 import random
 import sys
 import urllib.request
@@ -18,7 +21,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data"
 ENABLE_URL = "https://raw.githubusercontent.com/dolph/dictionary/master/enable1.txt"
-FREQ_URL = "https://norvig.com/google-books-common-words.txt"
 
 # Not for a family game, or no fun to clue.
 BLOCKED = set("""
@@ -31,8 +33,8 @@ slut sluts bitch bitches bastard bastards damn damned hell arse arses ass asses 
 vagina sex sexes sexed sexy semen sperm incest molest nazi nazis slave slaves suicide suicides
 cancer cancers tumor tumors aids murder murders murdered killer killers kill kills killed corpse
 corpses abort aborts aborted abortion nude nudes porn erotic orgy orgies pimp pimps hooker hookers
-dick dicks cock cocks crap craps turd turds fart farts pee pees poo poop urine feces enema enemas
-""".split()) - {"craps"}           # (the dice game is welcome here)
+dick dicks cock cocks crap turd turds fart farts pee pees poo poop urine feces enema enemas scum
+""".split())
 
 
 def fetch(url, path):
@@ -44,24 +46,58 @@ def fetch(url, path):
 
 
 def load_words(top):
-    """{length: [(word, rank), ...]}: ENABLE words among the `top` commonest, capitals."""
-    enable = set(fetch(ENABLE_URL, DATA / "enable1.txt").read_text().split())
-    out, rank = {}, 0
-    for ln in fetch(FREQ_URL, DATA / "gbooks_common.txt").read_text().splitlines():
-        w = ln.split()[0].lower()
-        rank += 1
-        if rank > top:
-            break
-        if w in enable and w not in BLOCKED and 3 <= len(w) <= 15:
-            out.setdefault(len(w), []).append((w.upper(), rank))
+    """{length: [(word, rank), ...]}: the ENABLE words of 3 to 15 letters
+    that are common enough, capitals, commonest first. rank is 0 for the
+    commonest word there is, about `top` for the rarest let in."""
+    if (DATA / "pylib").exists():
+        sys.path.insert(0, str(DATA / "pylib"))
+    from wordfreq import zipf_frequency
+    # A word of Zipf frequency z is about the 10^(7.2 - z)th commonest.
+    floor = 7.2 - math.log10(top)
+    out = {}
+    for w in fetch(ENABLE_URL, DATA / "enable1.txt").read_text().split():
+        if not 3 <= len(w) <= 15 or w in BLOCKED:
+            continue
+        z = zipf_frequency(w, "en")
+        if z >= floor:
+            out.setdefault(len(w), []).append((w.upper(), int(10 ** (7.2 - z))))
+    for ws in out.values():
+        ws.sort(key=lambda x: (x[1], x[0]))
     return out
 
 
+ENDINGS = {"S", "ES", "ED", "D", "ER", "R", "RS", "ERS", "EST", "ING", "INGS", "LY", "Y", "N", "EN", "TH",
+           "AL", "NESS", "FUL", "LESS", "MENT"}
+Y_ENDINGS = {"IER", "IES", "IED", "ILY", "IEST"}
+
+
+def related(a, b):
+    """Two answers too alike to share a grid: one is the other with an
+    ending (ACE and ACES, AIM and AIMING, TEN and TENTH), or they are one
+    word with two endings (RENTS and RENTED, EASY and EASIER)."""
+    if len(a) > len(b):
+        a, b = b, a
+    k = 0
+    while k < len(a) and a[k] == b[k]:
+        k += 1
+    ra, rb = a[k:], b[k:]
+    if not ra:
+        return rb in ENDINGS
+    if ra == "Y" and rb in Y_ENDINGS:
+        return k >= 3
+    return k >= 4 and ra in ENDINGS and rb in ENDINGS
+
+
 class Filler:
+    """Each slot keeps the set of words it can still take (a bit mask over
+    the words of its length). Placing a word narrows the slots it crosses;
+    the slot with the fewest words left goes next, and of its words the ones
+    that leave its crossings the most room are tried first."""
+
     def __init__(self, rows, words, rng):
         self.n = n = len(rows)
         self.rng = rng
-        self.cell = [list(r) for r in rows]
+        self.rows = rows
         white = lambda r, c: 0 <= r < n and 0 <= c < n and rows[r][c] != "#"
         self.slots = []                       # lists of (r, c)
         for r in range(n):
@@ -78,115 +114,149 @@ class Filler:
                     while white(k, c):
                         k += 1
                     self.slots.append([(j, c) for j in range(r, k)])
-        self.at = {}                          # cell -> [(slot, position)]
+        at = {}
         for s, cells in enumerate(self.slots):
             for i, rc in enumerate(cells):
-                self.at.setdefault(rc, []).append((s, i))
-        # Per length: the words, and for each position and letter a bit mask
-        # of the words that have it there.
-        self.words, self.mask, self.all = {}, {}, {}
+                at.setdefault(rc, []).append((s, i))
+        # cross[s]: (position in s, other slot, position in it)
+        self.cross = [[] for _ in self.slots]
+        for rc, uses in at.items():
+            if len(uses) == 2:
+                (s, i), (t, j) = uses
+                self.cross[s].append((i, t, j))
+                self.cross[t].append((j, s, i))
+        self.words, self.mask = {}, {}
         for ln in {len(s) for s in self.slots}:
             ws = words.get(ln, [])
             self.words[ln] = ws
-            self.all[ln] = (1 << len(ws)) - 1
             m = [[0] * 26 for _ in range(ln)]
             for k, (w, _) in enumerate(ws):
                 for i, ch in enumerate(w):
                     m[i][ord(ch) - 65] |= 1 << k
             self.mask[ln] = m
-        self.used = set()
+        self.same = {}                        # slots of each length (no word twice)
+        for s, cells in enumerate(self.slots):
+            self.same.setdefault(len(cells), []).append(s)
+        self.dom = []
+        self.word = [None] * len(self.slots)
+        self.fixed = {}
+        for s, cells in enumerate(self.slots):
+            ln = len(cells)
+            m = (1 << len(self.words[ln])) - 1
+            letters = [rows[r][c] for r, c in cells]
+            for i, ch in enumerate(letters):
+                if ch != ".":
+                    m &= self.mask[ln][i][ord(ch) - 65]
+            if all(ch != "." for ch in letters):
+                self.fixed[s] = "".join(letters)        # a theme word: anything goes
+                self.word[s] = self.fixed[s]
+                m = 0
+            self.dom.append(m)
         self.nodes = 0
 
-    def cands(self, s):
-        cells = self.slots[s]
-        ln = len(cells)
-        m = self.all[ln]
-        for i, (r, c) in enumerate(cells):
-            ch = self.cell[r][c]
-            if ch != ".":
-                m &= self.mask[ln][i][ord(ch) - 65]
-                if not m:
-                    break
-        return m
+    def place(self, s, k, trail):
+        """Word k into slot s; False if a crossing slot is left with nothing."""
+        ln = len(self.slots[s])
+        w = self.words[ln][k][0]
+        for other in self.word:
+            if other is not None and related(w, other):
+                return False
+        self.word[s] = w
+        for i, t, j in self.cross[s]:
+            if self.word[t] is not None:
+                continue
+            d = self.dom[t] & self.mask[len(self.slots[t])][j][ord(w[i]) - 65]
+            if d != self.dom[t]:
+                trail.append((t, self.dom[t]))
+                self.dom[t] = d
+            if not d:
+                return False
+        bit = 1 << k
+        for t in self.same[ln]:
+            if t != s and self.word[t] is None and self.dom[t] & bit:
+                trail.append((t, self.dom[t]))
+                self.dom[t] &= ~bit
+                if not self.dom[t]:
+                    return False
+        return True
 
-    def filled(self, s):
-        return all(self.cell[r][c] != "." for r, c in self.slots[s])
+    def undo(self, s, trail):
+        self.word[s] = None
+        for t, d in reversed(trail):
+            self.dom[t] = d
+
+    def room(self, s, w):
+        """How much choice word w would leave the tightest slot it crosses."""
+        least = 1 << 30
+        for i, t, j in self.cross[s]:
+            if self.word[t] is None:
+                k = (self.dom[t] & self.mask[len(self.slots[t])][j][ord(w[i]) - 65]).bit_count()
+                if k < least:
+                    least = k
+                    if not k:
+                        break
+        return least
 
     def solve(self, limit):
         self.nodes += 1
         if self.nodes > limit:
             return False
-        # The open slot with the fewest candidates.
-        best, bm, bn = None, 0, 1 << 60
+        best, bn = None, 1 << 60
         for s in range(len(self.slots)):
-            if self.filled(s):
-                continue
-            m = self.cands(s)
-            k = bin(m).count("1")
-            if k == 0:
-                return False
-            if k < bn:
-                best, bm, bn = s, m, k
+            if self.word[s] is None:
+                k = self.dom[s].bit_count()
+                if k == 0:
+                    return False
+                if k < bn:
+                    best, bn = s, k
         if best is None:
             return True
-        cells = self.slots[best]
-        ws = self.words[len(cells)]
-        picks = [k for k in range(len(ws)) if bm >> k & 1 and ws[k][0] not in self.used]
-        # Common words first, with some shuffle so seeds differ.
-        picks.sort(key=lambda k: ws[k][1] * self.rng.uniform(0.5, 2.0))
-        for k in picks:
-            w = ws[k][0]
-            before = [self.cell[r][c] for r, c in cells]
-            for (r, c), ch in zip(cells, w):
-                self.cell[r][c] = ch
-            self.used.add(w)
-            self.placed.add(best)
-            ok = True
-            for rc in cells:                  # every crossing word still possible?
-                for s, _ in self.at[rc]:
-                    if s == best:
-                        continue
-                    m = self.cands(s)
-                    if not m:
-                        ok = False
-                    elif self.filled(s):
-                        cw = "".join(self.cell[r][c] for r, c in self.slots[s])
-                        if cw in self.used and s not in self.placed:
-                            ok = False
-                if not ok:
-                    break
-            if ok and self.solve(limit):
+        ws = self.words[len(self.slots[best])]
+        # The commonest 30 or so candidates (a few skipped at random, so
+        # seeds differ), tried in the order that leaves the crossings most room.
+        picks, m = [], self.dom[best]
+        while m and len(picks) < 30:
+            low = m & -m
+            m ^= low
+            if bn <= 30 or self.rng.random() < 0.7:
+                picks.append(low.bit_length() - 1)
+        scored = sorted(((self.room(best, ws[k][0]), -k) for k in picks), reverse=True)
+        for room, negk in scored[:8]:
+            if not room:
+                break
+            trail = []
+            if self.place(best, -negk, trail) and self.solve(limit):
                 return True
-            self.used.discard(w)
-            self.placed.discard(best)
-            for (r, c), ch in zip(cells, before):
-                self.cell[r][c] = ch
+            self.undo(best, trail)
             if self.nodes > limit:
                 return False
         return False
 
     def run(self, limit):
-        self.placed = {s for s in range(len(self.slots)) if self.filled(s)}
-        for s in list(self.placed):
-            self.used.add("".join(self.cell[r][c] for r, c in self.slots[s]))
+        # Theme words narrow their crossings before anything is placed.
+        for s, w in self.fixed.items():
+            for i, t, j in self.cross[s]:
+                if self.word[t] is None:
+                    self.dom[t] &= self.mask[len(self.slots[t])][j][ord(w[i]) - 65]
         if not self.solve(limit):
             return None
-        # Crossing words completed along the way must be distinct too.
-        ws = ["".join(self.cell[r][c] for r, c in cells) for cells in self.slots]
-        if len(set(ws)) != len(ws):
+        if len(set(self.word)) != len(self.word):
             return None
-        return ["".join(r) for r in self.cell]
+        g = [list(r) for r in self.rows]
+        for s, cells in enumerate(self.slots):
+            for (r, c), ch in zip(cells, self.word[s]):
+                g[r][c] = ch
+        return ["".join(r) for r in g]
 
 
 def fill(rows, top=30000, seed=1, tries=300, limit=1500):
     words = load_words(top)
+    rank = {w: r for ws in words.values() for w, r in ws}
     for t in range(tries):
         f = Filler(rows, words, random.Random(seed * 1000 + t))
         g = f.run(limit)
         if g:
-            rank = {w: r for ws in words.values() for w, r in ws}
-            got = ["".join(g[r][c] for r, c in cells) for cells in f.slots]
-            return g, sum(rank.get(w, top) for w in got) // len(got)
+            return g, sum(rank.get(w, top) for w in f.word) // len(f.word)
     return None, 0
 
 

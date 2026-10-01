@@ -1,13 +1,14 @@
 // Fat.cpp - see Fat.h. From HypeRunner's src/sd/Fat.cpp (MIT): clean-room
-// from the Microsoft FAT specification and the MBR layout. Here a file is
-// only ever looked for in the root directory.
+// from the Microsoft FAT specification and the MBR layout, by way of
+// CHWords' cut of it. Here a file is looked for by pattern in a folder of
+// the root directory. (This file runs on the PC as well: the simulator's
+// card is a real FAT image, and the host tests read one.)
 //
 // Size notes (-Os, RV32): word-sized locals avoid the masking and sign
 // extension that uint8_t/int8_t locals cost. Fields at odd offsets (some BPB
 // ones) are read with byte loads; aligned ones straight from the 4-byte
 // aligned buffer (little-endian, like FAT).
 #pragma GCC optimize("Os", "no-ipa-sra")
-#if !defined(CHSIM) && !defined(CHTEST)
 #include "Fat.h"
 #include "SdSpi.h"
 
@@ -81,11 +82,13 @@ bool bpb(const uint8_t *b, uint32_t base) {
     return true;
 }
 
-// Finds an 11-byte short name in directory `dir` (a cluster, or 0 for the
-// FAT16 root region). A directory holds at most 65,536 entries (4,096
-// sectors), which bounds the walk when a chain loops. b is shared by the
-// directory sectors and the FAT lookups, so nothing is cached here.
-int32_t lookup(uint32_t dir, const uint8_t *name, File &f, uint8_t *b, bool wantDir) {
+// Finds an 11-byte short name ('?' = any character) in directory `dir` (a
+// cluster, or 0 for the FAT16 root region), passing over the first `skip`
+// that fit. A directory holds at most 65,536 entries (4,096 sectors), which
+// bounds the walk when a chain loops. b is shared by the directory sectors
+// and the FAT lookups, so nothing is cached here.
+int32_t lookup(uint32_t dir, const uint8_t *name, File &f, uint8_t *b, bool wantDir, uint32_t skip,
+               char *nameOut) {
     uint32_t sec = 0;
     for (uint32_t guard = 4096; guard--;) {
         uint32_t lba;
@@ -108,11 +111,12 @@ int32_t lookup(uint32_t dir, const uint8_t *name, File &f, uint8_t *b, bool want
             if (!d[0]) return E_NOTFOUND;                   // end-of-directory mark
             if (d[0] == 0xE5 || (d[11] & 0x08)) continue;   // deleted; volume label or long-name part
             uint32_t i = 0;
-            while (i < 11 && d[i] == name[i]) i++;
+            while (i < 11 && (d[i] == name[i] || name[i] == '?')) i++;
             if (i < 11) continue;
-            // A path through a file fails; a directory opened as a file
-            // comes back as a 0-byte file (no runs).
-            if (wantDir && !(d[11] & 0x10)) return E_NOTFOUND;
+            // A folder is wanted, or a plain file that is not hidden.
+            if (wantDir ? !(d[11] & 0x10) : (d[11] & 0x12) != 0) continue;
+            if (skip) { skip--; continue; }
+            if (nameOut) for (i = 0; i < 11; i++) nameOut[i] = (char)d[i];
             // The high cluster word only exists on FAT32 (a fixed root
             // region means FAT16); FAT16 ignores it, as the PC tools do.
             f.cluster = u16at(d + 26) | (v.rootSecs ? 0u : u16at(d + 20) << 16);
@@ -147,9 +151,17 @@ int8_t mount(uint8_t *b) {
     }
 }
 
-int8_t find(const char *name, File &f, uint8_t *b) {
+int8_t folder(const char *name, File &dir, uint8_t *b) {
     if (!v.end) return E_NOTFOUND;
-    return (int8_t)lookup(v.rootSecs ? 0 : v.root, (const uint8_t *)name, f, b, false);
+    int32_t rc = lookup(v.rootSecs ? 0 : v.root, (const uint8_t *)name, dir, b, true, 0, nullptr);
+    // (A folder's first cluster is never 0: that would be the root.)
+    if (!rc && dir.cluster < 2) rc = E_NOTFOUND;
+    return (int8_t)rc;
+}
+
+int8_t match(const File &dir, const char *pattern, uint8_t skip, File &f, char *nameOut, uint8_t *b) {
+    if (!v.end) return E_NOTFOUND;
+    return (int8_t)lookup(dir.cluster, (const uint8_t *)pattern, f, b, false, skip, nameOut);
 }
 
 int8_t runs(const File &f, Run *out, uint8_t maxRuns, uint8_t *b) {
@@ -179,4 +191,3 @@ int8_t runs(const File &f, Run *out, uint8_t maxRuns, uint8_t *b) {
 }
 
 }  // namespace fat
-#endif

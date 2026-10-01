@@ -1,7 +1,7 @@
 """Draw a blank crossword grid: symmetric black squares, every word three
 letters or more, every letter in two words, all in one piece.
 
-    python tools/puzzles/template.py [--size 13] [--seed N] [--longest 8] [--theme WORD ...]
+    python tools/puzzles/template.py [--size 13] [--seed N] [--longest 8] [--black N] [--theme WORD ...]
 
 Prints a template for tools/puzzles/fill.py. Theme words are laid across in
 symmetric places (the first through the middle row if its length is odd).
@@ -57,7 +57,22 @@ def longest(g, n):
     return best
 
 
-def make(n, seed, maxlen, theme=()):
+def threes(g, n):
+    """Runs of exactly three open cells."""
+    k3 = 0
+    for lines in (g, list(zip(*g))):
+        for row in lines:
+            k = 0
+            for ch in list(row) + ["#"]:
+                if ch == "#":
+                    k3 += k == 3
+                    k = 0
+                else:
+                    k += 1
+    return k3
+
+
+def make(n, seed, maxlen, theme=(), min_black=0):
     rng = random.Random(seed)
     for _ in range(2000):
         g = [["."] * n for _ in range(n)]
@@ -66,10 +81,10 @@ def make(n, seed, maxlen, theme=()):
         if theme:
             mid = n // 2
             places = [mid] if len(theme) % 2 else []
-            k = 2 if n >= 13 else 1
+            k = 3
             while len(places) < len(theme):
                 places += [k, n - 1 - k]
-                k += 3
+                k += 2
             ok = True
             for w, r in zip(theme, places):
                 c0 = (n - len(w)) // 2 if r == mid else (0 if r < mid else n - len(w))
@@ -82,6 +97,13 @@ def make(n, seed, maxlen, theme=()):
                     if 0 <= c < n:
                         g[r][c] = "#"
                         g[n - 1 - r][n - 1 - c] = "#"
+                # What is left of the row beside the word, if too short for
+                # a word, goes black too.
+                for a, b in ((0, c0 - 1), (c0 + len(w) + 1, n)):
+                    if 0 < b - a < 3:
+                        for c in range(a, b):
+                            g[r][c] = "#"
+                            g[n - 1 - r][n - 1 - c] = "#"
             if not ok or not runs_ok(g, n):
                 raise SystemExit("theme words do not fit a symmetric layout")
         good = True
@@ -105,6 +127,25 @@ def make(n, seed, maxlen, theme=()):
             else:
                 good = False
                 break
+        # More black squares, if asked for: each where it makes the fewest
+        # three-letter words (of a few places tried).
+        while good and sum(r.count("#") for r in g) < min_black:
+            opts = []
+            for _ in range(60):
+                r, c = rng.randrange(n), rng.randrange(n)
+                if g[r][c] != "." or g[n - 1 - r][n - 1 - c] != ".":
+                    continue
+                g[r][c] = g[n - 1 - r][n - 1 - c] = "#"
+                if runs_ok(g, n) and connected(g, n):
+                    opts.append((threes(g, n), rng.random(), r, c))
+                g[r][c] = g[n - 1 - r][n - 1 - c] = "."
+                if len(opts) >= 8:
+                    break
+            if not opts:
+                good = False
+                break
+            _, _, r, c = min(opts)
+            g[r][c] = g[n - 1 - r][n - 1 - c] = "#"
         if good and longest(g, n)[0] <= maxlen and connected(g, n):
             return ["".join(r) for r in g]
     return None
@@ -116,8 +157,9 @@ if __name__ == "__main__":
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--longest", type=int, default=8)
     ap.add_argument("--theme", nargs="*", default=[])
+    ap.add_argument("--black", type=int, default=0, help="at least this many black squares")
     a = ap.parse_args()
-    g = make(a.size, a.seed, a.longest, [w.upper() for w in a.theme])
+    g = make(a.size, a.seed, a.longest, [w.upper() for w in a.theme], a.black)
     if not g:
         raise SystemExit("no grid found")
     print("\n".join(g))

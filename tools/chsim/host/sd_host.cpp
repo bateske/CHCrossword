@@ -1,7 +1,7 @@
-// The simulator's SD card: the file named by $CHCW_CARD (a WORDS.DIC from
-// tools/dict/build_sd.py) stands in for the card's blocks, the file's block
-// k at "LBA" k. With the variable unset there is no card, which is how the
-// scripts in tools/scripts run unless they say otherwise. The debug
+// The simulator's SD card: the file named by $CHCW_CARD (a FAT image from
+// tools/puzzles/mkcard.py; chdrive.py --card sets it) stands in for the
+// card's blocks. With the variable unset there is no card, which is how
+// the scripts in tools/scripts run unless they say otherwise. The debug
 // protocol's X command pulls the card out and puts it back.
 #include <stdio.h>
 #include <stdlib.h>

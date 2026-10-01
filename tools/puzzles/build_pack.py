@@ -4,6 +4,8 @@
                                                        -> src/game/PuzzleData.{h,cpp}
     python tools/puzzles/build_pack.py --cwd OUT.CWD --name NAME FILE.txt ...
                                                        a pack for the SD card (folder CHCW)
+    python tools/puzzles/build_pack.py --check         only check: the sources are sound and
+                                                       PuzzleData.cpp is what they build
     python tools/puzzles/build_pack.py --refit         work the Huffman code out again from the
                                                        sources (huff.json): only before any pack
                                                        has been handed out, since it changes the
@@ -85,6 +87,7 @@ def main():
     ap.add_argument("--cwd")
     ap.add_argument("--name", default="PUZZLES")
     ap.add_argument("--refit", action="store_true")
+    ap.add_argument("--check", action="store_true")
     ap.add_argument("--loose", action="store_true", help="skip the built-in puzzles' style rules")
     a = ap.parse_args()
     if a.cwd:
@@ -100,6 +103,14 @@ def main():
         refit(puzzles)
     blobs = blobs_of(puzzles)
     pack = cw.make_pack("BUILT-IN", blobs)
+    if a.check:
+        text = OUT_C.read_text()
+        body = text[text.index("BUILTIN["):]
+        have = bytes(int(v) for v in body[body.index("{") + 1:body.index("}")].replace("\n", " ").split(",") if v.strip())
+        if have != pack:
+            raise SystemExit("src/game/PuzzleData.cpp is stale: run tools/puzzles/build_pack.py")
+        print(f"{len(puzzles)} puzzles sound, PuzzleData.cpp up to date ({len(pack)} bytes)")
+        return
     _, counts, order = cw.canonical(cw.load_lengths())
     syms = [0 if s == cw.END else ord(cw.ALPHA[s]) for s in order]
     OUT_H.write_text(

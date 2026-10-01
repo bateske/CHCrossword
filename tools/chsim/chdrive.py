@@ -19,6 +19,9 @@ Script lines (# comments allowed):
     solve [N]           fill in the next N words not done yet (all of them by default), each
                         through the letter board as a player would: cursor to the word, A,
                         the letters still missing
+    wrong               fill in the next word not done yet with its last missing letter wrong
+    mark                remember the STATE line
+    delta KEY=N ..      fail unless these have changed by N since `mark`
     rec start [EVERY] / rec stop NAME   record everything in between to NAME.gif
     tap BTN[+BTN] [H]   hold for H frames (default 3), then release, then 1 frame
     hold BTN[+BTN]      keep held until `release`
@@ -210,6 +213,19 @@ class Driver:
                 self.press("DOWN" if dy > 0 else "UP", 2)
             self.press("A", 2)
 
+    def wrong(self):
+        """The next word not done, typed with its last missing letter one on in the alphabet."""
+        _, w, cell, down, answer, have = self.query("W", "WORD").split()
+        k = have.index(".")
+        step = int(self.state()["n"]) if down == "1" else 1
+        self.cmd(f"C {int(cell) + k * step} {down}")
+        self.frames(1)
+        self.press("A")
+        self.frames(10)
+        missing = [a for a, h in zip(answer, have) if h == "."]
+        missing[-1] = chr((ord(missing[-1]) - 65 + 1) % 26 + 65)
+        self.type("".join(missing))
+
     def solve(self, count):
         while count:
             word = self.query("W", "WORD").split()
@@ -317,6 +333,16 @@ class Driver:
                     raise SystemExit(f"waitstate {args[0]}: never happened")
             elif op == "type":
                 self.type(args[0])
+            elif op == "wrong":
+                self.wrong()
+            elif op == "mark":
+                self.mark = self.state()
+            elif op == "delta":
+                st = self.state()
+                for kv in args:
+                    k, v = kv.split("=")
+                    if int(st[k]) - int(self.mark[k]) != int(v):
+                        raise SystemExit(f"delta {kv}: {k} went from {self.mark[k]} to {st[k]} ({raw.strip()})")
             elif op == "solve":
                 self.solve(int(args[0]) if args else 100000)
             elif op == "rec":

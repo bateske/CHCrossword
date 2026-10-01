@@ -5,4 +5,4 @@
 constexpr uint8_t HUFF_MAX = 12;                // the longest code
 extern const uint8_t HUFF_COUNT[12];           // codes of each length 1..HUFF_MAX
 extern const char HUFF_SYM[58];              // the characters in code order (0 = end of text)
-extern const uint8_t BUILTIN[2404];        // the built-in pack (2 puzzles)
+extern const uint8_t BUILTIN[11035];        // the built-in pack (16 puzzles)

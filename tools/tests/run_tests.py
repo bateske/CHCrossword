@@ -1,10 +1,11 @@
-"""Build and run the host tests (the puzzle decoder, the rules, saving).
+"""Build and run the host tests (the puzzle decoder, the rules, saving, the card).
 
-    python tools/tests/run_tests.py
+    python tools/tests/run_tests.py [--quick]
 
 The built-in puzzles are decoded with the Python reference decoder
 (tools/puzzles/cwformat.py) into build/expect.h, which the C++ tests hold
-the game's own decoder to.
+the game's own decoder to. The card tests read packs out of FAT16 and FAT32
+images made here (--quick: FAT16 only; a FAT32 image is 34 MB).
 """
 import subprocess
 import sys
@@ -18,8 +19,9 @@ from chsim import find_cxx  # noqa: E402
 import cwformat as cw  # noqa: E402
 
 # The pure-logic sources, compiled beside the tests as they are.
-SOURCES = [HERE / "test_crossword.cpp", ROOT / "src" / "game" / "Puzzle.cpp", ROOT / "src" / "game" / "Game.cpp",
-           ROOT / "src" / "game" / "PuzzleData.cpp", ROOT / "src" / "pack" / "Pack.cpp"]
+SOURCES = [HERE / "test_crossword.cpp", HERE / "nocard.cpp", ROOT / "src" / "game" / "Puzzle.cpp",
+           ROOT / "src" / "game" / "Game.cpp", ROOT / "src" / "game" / "PuzzleData.cpp",
+           ROOT / "src" / "pack" / "Pack.cpp", ROOT / "src" / "sd" / "Fat.cpp"]
 
 
 def c_str(s):
@@ -50,21 +52,98 @@ def write_expect(path):
     path.write_text("\n".join(out) + "\n")
 
 
-def main():
-    exe = HERE / "build" / "test_crossword.exe"
-    exe.parent.mkdir(exist_ok=True)
-    write_expect(HERE / "build" / "expect.h")
+def compile(exe, sources):
     cmd = find_cxx() + ["-std=gnu++17", "-O2", "-Wall", "-Wextra", "-Wno-unused-parameter",
                         "-Wno-unused-function", "-Wno-unused-variable", "-Wno-unknown-pragmas",
                         "-fsanitize=undefined", "-fno-sanitize-recover=undefined",
-                        "-DCHTEST", *[str(s) for s in SOURCES], "-o", str(exe)]
+                        "-DCHTEST", *[str(s) for s in sources], "-o", str(exe)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
         sys.stderr.write(r.stdout + r.stderr)
         raise SystemExit("build failed")
     if r.stderr.strip():
         sys.stderr.write(r.stderr)
-    raise SystemExit(subprocess.run([str(exe), *sys.argv[1:]]).returncode)
+
+
+def card_tests(exe, quick):
+    """Cards of each kind, with packs made from the built-in puzzles."""
+    import mkcard
+    import fatimg
+    build = HERE / "build"
+    _, blobs = cw.read_pack(builtin_pack())
+    packs = {
+        "ALPHA.CWD": cw.make_pack("ALPHA", blobs[:1]),
+        "BETA.CWD": cw.make_pack("BETA PACK", list(reversed(blobs))),
+        "GAMMA.CWD": cw.make_pack("GAMMA", (blobs * 32)[:32]),
+    }
+    expect = build / "card_expect.txt"
+    with open(expect, "w") as f:
+        for data in packs.values():
+            name, bl = cw.read_pack(data)
+            titles = "|".join(cw.decode(b)["title"] for b in bl)
+            f.write(f"{name.replace(' ', '_')} {int.from_bytes(data[20:24], 'little')} {len(bl)} {titles}\n")
+    # Files that are not packs: the game must pass over them.
+    junk = dict(packs)
+    junk["NOTES.TXT"] = b"hello"
+    junk["EMPTY.CWD"] = b""
+    junk["SHORT.CWD"] = packs["BETA.CWD"][:20]
+    junk["CUT.CWD"] = packs["GAMMA.CWD"][:3000]
+    junk["NOISE.CWD"] = bytes((i * 37 + 11) & 255 for i in range(5000))
+    bad = bytearray(packs["BETA.CWD"])
+    bad[30] ^= 0x40
+    junk["BADCRC.CWD"] = bytes(bad)
+    ok = True
+
+    def run(*args):
+        nonlocal ok
+        r = subprocess.run([str(exe), *map(str, args)], capture_output=True, text=True)
+        print("  " + (r.stdout.strip().splitlines() or ["(no output)"])[-1])
+        if r.returncode:
+            print(r.stdout[-1500:] + r.stderr[-1500:])
+            ok = False
+
+    print("card: none")
+    run("--none")
+    cases = [("fat16", dict(fs="fat16")),
+             ("fat16, long names, decoys, files in pieces", dict(fs="fat16", lfn=True, decoys=True, fragment=3, seed=7)),
+             ("fat16, no partition table", dict(fs="fat16", mbr=False))]
+    if not quick:
+        cases += [("fat32", dict(fs="fat32")),
+                  ("fat32, long names, decoys, files in pieces",
+                   dict(fs="fat32", lfn=True, decoys=True, fragment=4, seed=3))]
+    img = build / "card.img"
+    for label, kw in cases:
+        print(f"card: {label}")
+        mkcard.make(img, junk, **kw)
+        run(img, expect)
+    # Cards with nothing for the game: the states it reports
+    # (pack::Card: 1 unreadable, 2 exFAT, 3 no packs).
+    print("card: no CHCW folder / no packs in it / exFAT / blank")
+    fatimg.build_image(str(img), {"OTHER/ALPHA.CWD": packs["ALPHA.CWD"], "ALPHA.CWD": packs["ALPHA.CWD"]}, fs="fat16")
+    run(img, expect, 3)
+    mkcard.make(img, {"NOISE.CWD": junk["NOISE.CWD"], "X.TXT": b"x"}, fs="fat16")
+    run(img, expect, 3)
+    fatimg.make_exfat_stub(str(img))
+    run(img, expect, 2)
+    img.write_bytes(bytes(512 * 64))
+    run(img, expect, 1)
+    img.unlink()
+    return ok
+
+
+def main():
+    build = HERE / "build"
+    build.mkdir(exist_ok=True)
+    quick = "--quick" in sys.argv
+    write_expect(build / "expect.h")
+    exe = build / "test_crossword.exe"
+    compile(exe, SOURCES)
+    ok = subprocess.run([str(exe)]).returncode == 0
+    card = build / "test_card.exe"
+    compile(card, [HERE / "test_card.cpp", ROOT / "src" / "game" / "Puzzle.cpp", ROOT / "src" / "game" / "PuzzleData.cpp",
+                   ROOT / "src" / "pack" / "Pack.cpp", ROOT / "src" / "sd" / "Fat.cpp"])
+    ok &= card_tests(card, quick)
+    raise SystemExit(0 if ok else 1)
 
 
 if __name__ == "__main__":

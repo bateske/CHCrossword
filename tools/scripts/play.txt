@@ -1,35 +1,35 @@
-# A puzzle from the list to its last word: locks, a wrong word, the end.
+# A puzzle from its first word to the results: locks, a wrong word put
+# right, the end of the puzzle, the record kept.
 say G 0
 wait 20
-expect scr=P words=70 locked=0 score=0
+expect scr=P locked=0 score=0 solved=0
 solve 2
-expect locked=2 score=85
+expect locked=2 streak=2
 snap two
-# A wrong word: 15 across (EVEN) typed as EVIL.
-say C 26 0
-wait 2
-tap A
-wait 10
-type EVIL
+# A wrong word: charged once, the streak gone, the letters left in.
+mark
+wrong
 wait 6
 snap wrong
-expect locked=2 score=65 streak=0 board=0
+delta score=-20 locked=0
+expect streak=0 board=0
 wait 40
 solve 1
 snap fixed
-solve 20
+expect streak=1
+solve 12
 snap midway
-state
-say Z 1
+say Z 2
 wait 4
 snap nearly
 solve
 wait 30
 snap solved
-wait 160
+expect solved=1
+wait 240
 snap result
-state
-expect solved=1 locked=70
+expect ov=2
 tap A
 wait 20
-snap after
+snap list
+expect scr=S

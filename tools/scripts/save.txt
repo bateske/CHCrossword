@@ -1,0 +1,48 @@
+# Save and quit, then continue: the grid, the clock and the score come back.
+say G 3
+wait 20
+solve 5
+say U 75
+tap RIGHT
+tap DOWN
+wait 2
+mark
+snap before
+tap START
+wait 6
+tap DOWN
+tap DOWN
+tap A
+wait 30
+expect scr=T
+snap title
+# CONTINUE is first on the title now.
+tap A
+wait 30
+expect scr=P
+delta score=0 locked=0 streak=0 cur=0 down=0
+snap after
+# Checking off: no locks, judged when the last letter is right.
+say J O
+wait 20
+tap DOWN
+tap DOWN
+tap A
+wait 4
+snap options
+tap B
+wait 20
+say G 1
+wait 20
+solve 3
+expect locked=0 score=0 solved=0
+snap purist
+tap START
+wait 6
+snap pause
+tap B
+solve
+wait 30
+expect solved=1
+wait 170
+snap result

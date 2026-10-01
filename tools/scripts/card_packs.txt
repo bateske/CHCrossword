@@ -1,0 +1,57 @@
+# Packs on the card: the list changes pack, a card puzzle plays, saves and
+# comes back, and the card pulled out is not a crash.
+wait 40
+tap A
+wait 20
+expect scr=S
+snap builtin
+tap RIGHT
+wait 4
+snap bonus
+tap RIGHT
+wait 4
+snap extra
+tap LEFT
+wait 4
+tap DOWN
+wait 2
+tap A
+wait 30
+expect scr=P
+solve 4
+snap playing
+mark
+tap START
+wait 6
+tap DOWN
+tap DOWN
+tap A
+wait 30
+expect scr=T
+tap A
+wait 30
+expect scr=P
+delta score=0 locked=0
+snap continued
+solve
+wait 240
+expect solved=1 ov=2
+snap result
+tap A
+wait 20
+snap solvedlist
+# The card pulled while its list is up: back to the built-in puzzles.
+say X 1
+tap DOWN
+wait 4
+tap A
+wait 20
+snap pulled
+state
+# Put back: the list finds it again on the way in from the title.
+say X 0
+tap B
+wait 20
+tap A
+wait 20
+snap back
