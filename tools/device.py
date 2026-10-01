@@ -1,4 +1,4 @@
-"""Build, upload and drive CHBackgammon on the attached CHGame.
+"""Build, upload and drive CHCrossword on the attached CHGame.
 
     python tools/device.py build [--debug]         compile (release by default)
     python tools/device.py upload [--debug]        compile + upload

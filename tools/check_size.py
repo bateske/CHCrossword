@@ -1,4 +1,4 @@
-"""Flash and RAM report for a CHBackgammon build, from the linker map.
+"""Flash and RAM report for a CHCrossword build, from the linker map.
 
     python tools/check_size.py [build/release] [--top 30] [--flash-limit N] [--ram-limit N]
 

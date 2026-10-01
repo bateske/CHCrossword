@@ -1,4 +1,4 @@
-"""Render CHBackgammon's sound effects to WAV on the PC, from the real code.
+"""Render CHCrossword's sound effects to WAV on the PC, from the real code.
 
     python tools/audio/preview.py OUTDIR [--src DIR]
 
