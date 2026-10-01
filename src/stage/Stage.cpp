@@ -67,10 +67,25 @@ static void letter(int x, int y, uint8_t v, uint8_t ink) {
 }
 
 // A large letter (the close-up's and the keys'), centred in w pixels from
-// x, its capitals' top at y.
-static void bigLetter(int x, int y, int w, uint8_t v, uint8_t ink) {
+// x, its capitals' top at y, with a drop shadow a pixel down and right.
+static void bigLetter(int x, int y, int w, uint8_t v, uint8_t ink, uint8_t shadow) {
     const uint16_t *g = TILEFONT[v - 1];
-    glyph16(x + (w - (g[0] & 255) + 1) / 2, y, g + 1, (uint8_t)(g[0] >> 8), ink);
+    uint8_t rows = (uint8_t)(g[0] >> 8);
+    x += (w - (g[0] & 255)) / 2;
+    glyph16(x + 1, y + 1, g + 1, rows, shadow);
+    glyph16(x, y, g + 1, rows, ink);
+}
+
+// A tile as the close-up draws them (and the keys): its face, an edge of
+// shade along the bottom and right, and the corners taken off.
+static void tile(int x, int y, int w, int h, uint8_t face, uint8_t edge, uint8_t behind) {
+    gfx_fillRect(x, y, w, h, face);
+    gfx_hline(x, y + h - 1, w, edge);
+    gfx_vline(x + w - 1, y, h, edge);
+    gfx_pixel(x, y, behind);
+    gfx_pixel(x + w - 1, y, behind);
+    gfx_pixel(x, y + h - 1, behind);
+    gfx_pixel(x + w - 1, y + h - 1, behind);
 }
 
 static void cellXY(uint8_t c, int &x, int &y) {
@@ -479,16 +494,10 @@ static void drawClose(uint32_t frame) {
         bool grow;
         uint8_t face = look((uint8_t)c, frame, ink, grow), edge = shadeOf(face);
         if (grow) { x--; y--; t += 2; }
-        gfx_fillRect(x, y, t, t, face);
-        gfx_hline(x, y + t - 1, t, edge);
-        gfx_vline(x + t - 1, y, t, edge);
-        gfx_pixel(x, y, FELT_DK);
-        gfx_pixel(x + t - 1, y, FELT_DK);
-        gfx_pixel(x, y + t - 1, FELT_DK);
-        gfx_pixel(x + t - 1, y + t - 1, FELT_DK);
+        tile(x, y, t, t, face, edge, FELT_DK);
         uint8_t v = cell[c] & LETTER;
         if (v) {
-            bigLetter(x, y + t - 11, t - 1, v, ink);
+            bigLetter(x, y + t - 13, t - 1, v, ink, edge);
         } else if (starts) {
             char b[4];
             fmtInt(b, num);
@@ -593,10 +602,15 @@ static void drawBoard(uint32_t frame) {
         int x = 1 + (k % KEY_COLS) * KEY_W, y = y0 + 2 + (k / KEY_COLS) * KEY_H;
         bool on = k == key;
         if (on && pokeT > 3) y++;
-        gfx_fillRect(x, y, KEY_W - 1, KEY_H - 1, on ? FX_B : SKIN);
-        gfx_hline(x, y + KEY_H - 2, KEY_W - 1, on ? WOOD : SILVER);
-        if (k == KEY_DEL) text35x2(x + 4, y + 1, "<", RED);
-        else bigLetter(x, y + 1, KEY_W - 1, (uint8_t)(k + 1), INK);
+        // Felt-green tiles with white letters; the one under the glove gold.
+        uint8_t ink = on ? INK : WHITE, shadow = on ? WOOD : INK;
+        tile(x, y, KEY_W - 1, KEY_H - 1, on ? FX_B : FELT, on ? WOOD : FELT_DK, NAVY);
+        if (k == KEY_DEL) {
+            text35x2(x + 4, y + 1, "<", shadow);
+            text35x2(x + 3, y, "<", ink);
+        } else {
+            bigLetter(x, y, KEY_W - 2, (uint8_t)(k + 1), ink, shadow);
+        }
     }
     // The glove comes down on a key as it is pressed.
     if (pokeT) {
