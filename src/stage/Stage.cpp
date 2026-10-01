@@ -27,6 +27,7 @@ static uint8_t box;                 // the grid's square: 104 or 105 px
 static uint8_t zs;
 static int camX, camY;
 static uint8_t dealT;               // the tiles being laid out as a puzzle starts
+static uint8_t bobT;                // the glove over the cursor, bobbing
 static const int PANEL_H = 42;      // the letter board
 static const int KEY_W = 14, KEY_H = 13;
 
@@ -361,6 +362,7 @@ void update() {
             dirty = true;
         }
     }
+    if (!(++bobT & 15)) dirty = true;
     if (pokeT) pokeT--;
     if (wrongT) wrongT--;
     if (comboT) comboT--;
@@ -548,11 +550,18 @@ static void drawGrid(uint32_t frame) {
     gfx_fillRect(0, 0, box, box, FELT_DK);
     if (zs == cs * 2) drawClose(frame);
     else drawFlat(frame);
-    // The cursor's frame, over its neighbours' edges.
+    // The cursor: a rainbow frame round its tile, over its neighbours' edges
+    // (its corners left off, as the close-up's tiles' are), and the glove
+    // pointing down at it from above - or, where that would take the glove
+    // off the top of the screen, turned over and pointing up from below.
     if (!game::st.solved && !dealT) {
         int x, y;
         cellXY(cur, x, y);
-        gfx_rect(x - 1, y - 1, zs + 1, zs + 1, INK);
+        roundRect(x - 1, y - 1, zs + 1, zs + 1, 1, FX_A);
+        int bob = (bobT >> 4) & 1, h = HAND[1], tip = zs > cs ? 3 : 1;
+        x += (zs - 1) / 2 - HAND_TIP;
+        if (y + tip - h - 1 >= 0) sprite4(HAND, x, y + tip - h - bob);
+        else sprite4(HAND, x, y + zs - 1 - tip + bob, nullptr, -256);
     }
 }
 
