@@ -202,7 +202,7 @@ def main():
     total += len(data)
     preview("hand", [hand, hand[::-1]])
     # ... and turned a quarter turn, pointing right: the title menu's.
-    side = [[hand[c][len(hand[0]) - 1 - r] for c in range(len(hand))] for r in range(len(hand[0]))]
+    side = [[hand[c][r] for c in range(len(hand))] for r in range(len(hand[0]))]
     data = pack_span4(side)
     defs.append(c_array("HAND_SIDE", data))
     decls.append(f"extern const uint8_t HAND_SIDE[{len(data)}];                       // the glove pointing right, {len(side[0])} x {len(side)}")

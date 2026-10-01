@@ -328,7 +328,7 @@ static void titleRender(uint32_t frame) {
     }
     // The menu, in the large face; the glove on its side points at the choice.
     uint8_t items[4], n = titleItems(items);
-    int y0 = 125 - n * 12;
+    int y0 = 123 - n * 12;
     for (uint8_t i = 0; i < n; i++) {
         const char *text = ITEM[items[i]];
         int w = stage::bigText(0, 0, text, 0, 0, 0, false), x = 66 - w / 2, y = y0 + i * 12;
