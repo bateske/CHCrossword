@@ -677,7 +677,7 @@ static void optionsRender(uint32_t frame) {
 #if CHCW_DEBUG
 //   G <i> [pack]        start puzzle i of a pack (0, the built-in one, by default)
 //   H                   STATE scr=<T|S|P|O> ov=<overlay> cur=<cell> down=<0|1> board=<0|1> key=<k>
-//                       score= streak= locked= words= solved= sec= n=
+//                       score= streak= locked= words= solved= sec= n= busy= jp=<the jackpot word>
 //   W                   the next word not done: WORD <w> <cell> <down> <answer> <entered, . for none>
 //   C <cell> <down>     put the cursor there
 //   Z <k>               the grid filled in but for the cells of the last k words (no show)
@@ -714,6 +714,7 @@ static bool debugHook(char cmd, const char *args) {
             p = fmtInt(fmtStr(p, " sec="), game::seconds());
             p = fmtInt(fmtStr(p, " n="), puz::n);
             p = fmtInt(fmtStr(p, " busy="), stage::busy());
+            p = fmtInt(fmtStr(p, " jp="), game::st.jackpot);
             fmtStr(p, "\n");
             dbg::print(buf);
             return true;

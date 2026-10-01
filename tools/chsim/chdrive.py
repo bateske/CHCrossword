@@ -23,6 +23,9 @@ Script lines (# comments allowed):
     mark                remember the STATE line
     delta KEY=N ..      fail unless these have changed by N since `mark`
     rec start [EVERY] / rec stop NAME   record everything in between to NAME.gif
+    rec pause / rec resume              ... but for what is between these (highlights)
+    solveto             solve up to the jackpot word
+    solvemost           solve until two words are left
     tap BTN[+BTN] [H]   hold for H frames (default 3), then release, then 1 frame
     hold BTN[+BTN]      keep held until `release`
     release
@@ -226,10 +229,13 @@ class Driver:
         missing[-1] = chr((ord(missing[-1]) - 65 + 1) % 26 + 65)
         self.type("".join(missing))
 
-    def solve(self, count):
+    def solve(self, count, until=None):
         while count:
             word = self.query("W", "WORD").split()
-            if word[1] == "none":
+            if word[1] == "none" or word[1] == until:
+                break
+            st = self.state()
+            if until == "last" and int(st["words"]) - int(st["locked"]) <= 2:
                 break
             _, w, cell, down, answer, have = word
             # The cursor to the word's first empty cell, then type what is missing.
@@ -345,12 +351,22 @@ class Driver:
                         raise SystemExit(f"delta {kv}: {k} went from {self.mark[k]} to {st[k]} ({raw.strip()})")
             elif op == "solve":
                 self.solve(int(args[0]) if args else 100000)
+            elif op == "solvemost":
+                # ... until two words are left.
+                self.solve(100000, "last")
+            elif op == "solveto":
+                # ... up to (not including) the jackpot word.
+                self.solve(100000, self.state()["jp"])
             elif op == "rec":
                 # rec start [EVERY]: record from here (every EVERY-th frame, 3);
                 # rec stop NAME: write NAME.gif.
                 if args[0] == "start":
                     self.rec, self.rec_count = [], 0
                     self.rec_every = int(args[1]) if len(args) > 1 else 3
+                elif args[0] == "pause":
+                    self.rec_held, self.rec = self.rec, None
+                elif args[0] == "resume":
+                    self.rec = self.rec_held
                 else:
                     shots, self.rec = self.rec, None
                     frames = [to_image(d, 2) for d in shots]

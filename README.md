@@ -14,11 +14,13 @@ worth three times over; a wrong word buzzes and shakes the table;
 and the last word sets the whole grid off under SOLVED!, with a time against
 par and one to three stars to keep.
 
-![Down the grid: words locking, the combo building, a cross](docs/combo.gif)
+![A whole puzzle in highlights: the deal, the first words typed in the close-up, a wrong word put right, the combo climbing, the jackpot word, the last word and the stars](docs/gameplay.gif)
 
 | Title | The puzzle list | The first words |
 |---|---|---|
 | ![title](docs/title.gif) | ![list](docs/list.gif) | ![words](docs/words.gif) |
+| **Down the grid** | | |
+| ![combo](docs/combo.gif) | | |
 | **The close-up (hold B)** | **A wrong word** | **The last word** |
 | ![zoom](docs/zoom.gif) | ![wrong](docs/wrong.gif) | ![solved](docs/solved.gif) |
 

@@ -1,0 +1,40 @@
+# The README's gameplay GIF: a whole puzzle played, recorded only at its
+# highlights. python tools/chsim/chdrive.py --sim . tools/scripts/gameplay.txt docs
+# (then delete docs/sheet.png)
+wait 70
+rec start 3
+wait 50
+tap A
+wait 24
+tap A
+# The deal, and the first words typed in the close-up.
+wait 90
+solve 3
+wait 20
+rec pause
+solve 2
+rec resume
+# A wrong word, put right.
+wrong
+wait 50
+solve 1
+wait 16
+rec pause
+solve 3
+rec resume
+# The combo climbing.
+solve 4
+wait 16
+rec pause
+solveto
+rec resume
+# The jackpot word.
+solve 1
+wait 70
+rec pause
+solvemost
+rec resume
+# The last words, the show, the stars.
+solve
+wait 420
+rec stop gameplay
