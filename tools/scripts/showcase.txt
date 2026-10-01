@@ -1,0 +1,49 @@
+# The README's GIFs: python tools/chsim/chdrive.py --sim . --card out/card.img tools/scripts/showcase.txt docs
+# (out/card.img: python tools/check.py makes it; then delete docs/sheet.png and the PNGs)
+
+# The title.
+wait 8
+gif title 150 2
+
+# The list.
+tap A
+wait 20
+rec start 3
+tap DOWN
+wait 10
+tap DOWN
+wait 10
+tap RIGHT
+wait 30
+tap LEFT
+wait 20
+rec stop list
+
+# The first words of a puzzle.
+say G 0
+wait 30
+rec start 2
+solve 4
+wait 20
+rec stop words
+
+# Down the grid: the combo building, a cross.
+rec start 3
+solve 14
+wait 20
+rec stop combo
+
+# A wrong word.
+rec start 2
+wrong
+wait 50
+rec stop wrong
+solve 1
+
+# The last word and the show.
+say Z 1
+wait 10
+rec start 2
+solve
+wait 330
+rec stop solved

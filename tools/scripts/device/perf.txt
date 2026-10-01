@@ -1,0 +1,23 @@
+# For the board (python tools/device.py run tools/scripts/device/perf.txt out/dev_perf):
+# measured render times (the PERF lines: rnd = average, max, late frames),
+# free-running, where the simulator can only estimate.
+say J T
+free 3
+perf title
+say G 0
+wait 30
+free 2
+perf play, nothing moving
+solve 3
+perf play, typing three words
+say Z 3
+wait 10
+tap A
+wait 20
+perf board up, grid full
+solve
+wait 100
+perf the last words and the solved show
+wait 140
+perf results
+snap result
