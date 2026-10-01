@@ -6,5 +6,5 @@ extern const uint8_t HAND[111];                            // span4, fingertip o
 constexpr uint8_t HAND_TIP = 5;                           // its column
 extern const uint8_t FONT[718];                         // the display font (tools/art/font.txt): per glyph its
                                                             // character, width, top << 4 | rows, the rows' bits; 0 ends
-extern const uint16_t TILEFONT[26][12];                    // the close-up's letters (tools/art/tilefont.txt): width |
-                                                            // rows << 8, then the rows, leftmost pixel in bit 15
+extern const uint16_t TILEFONT[498];                     // the close-up's letters (tools/art/tilefont.txt), A to Z:
+                                                            // width | rows << 8, the rows of ink, the rows of half ink

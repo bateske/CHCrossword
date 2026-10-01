@@ -49,7 +49,7 @@ You need the Arduino IDE (2.x) or `arduino-cli`, and:
 
 The game needs **link-time optimisation**: pick *Tools > Optimize > Smallest
 + LTO*, and *Tools > USB > Upload only* (the game has no use for USB Serial,
-and uploading works as before). That is 48.8 KB of the 50,944-byte
+and uploading works as before). That is 49.8 KB of the 50,944-byte
 application region, with room left for the two flash pages that hold your
 saved puzzle and records. From the command line:
 
@@ -117,8 +117,12 @@ packs played.
 - **The close-up** is not the small grid doubled: at 16 pixels a square each
   tile is drawn with a shaded edge and clipped corners, its number in the
   3x5 font, and its letter in a face of its own - capitals nine pixels tall,
-  rasterized from DejaVu Serif Bold (`tools/tilefont.py`; 624 bytes for the
-  26, and the keys of the letter board use them too). The camera steps
+  rasterized from DejaVu Serif Bold and anti-aliased as far as sixteen
+  colours go: each letter has a layer of half-ink pixels on its curves and
+  diagonals, drawn in a tone between its own colour and that of the tile it
+  is on - silver on white, brown on gold, blue on cyan, light green on the
+  keys (`tools/tilefont.py`; 1 KB for the 26, and the keys of the letter
+  board use them too). The camera steps
   through the sizes between in four ticks, with flat tiles, to get there.
 - **A puzzle is about 700 bytes.** The black squares are one bit each (half
   of them: the other half is the first turned half a turn), the answers five

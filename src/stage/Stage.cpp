@@ -68,12 +68,17 @@ static void letter(int x, int y, uint8_t v, uint8_t ink) {
 }
 
 // A large letter (the close-up's and the keys'), centred in w pixels from
-// x, its capitals' top at y, with a drop shadow a pixel down and right.
-static void bigLetter(int x, int y, int w, uint8_t v, uint8_t ink, uint8_t shadow) {
-    const uint16_t *g = TILEFONT[v - 1];
+// x, its capitals' top at y: a drop shadow a pixel down and right, then its
+// half-ink pixels in `mid` - a tone between the letter's colour and that of
+// the tile it is on, which is all the anti-aliasing sixteen colours allow -
+// and its ink.
+static void bigLetter(int x, int y, int w, uint8_t v, uint8_t ink, uint8_t mid, uint8_t shadow) {
+    const uint16_t *g = TILEFONT;
+    while (--v) g += 1 + 2 * (g[0] >> 8);           // (the glyphs are of different heights)
     uint8_t rows = (uint8_t)(g[0] >> 8);
     x += (w - (g[0] & 255)) / 2;
     glyph16(x + 1, y + 1, g + 1, rows, shadow);
+    glyph16(x, y, g + 1 + rows, rows, mid);
     glyph16(x, y, g + 1, rows, ink);
 }
 
@@ -499,7 +504,8 @@ static void drawClose(uint32_t frame) {
         tile(x, y, t, t, face, edge, FELT_DK);
         uint8_t v = cell[c] & LETTER;
         if (v) {
-            bigLetter(x, y + t - 13, t - 1, v, ink, edge);
+            // (White on a wrong word's red; black on everything else.)
+            bigLetter(x, y + t - 13, t - 1, v, ink, face == RED ? SKIN : edge, edge);
         } else if (starts) {
             char b[4];
             fmtInt(b, num);
@@ -622,7 +628,7 @@ static void drawBoard(uint32_t frame) {
                 gfx_hline(x + 3 + in, y + 5 + r, 7 - in, r > 0 ? WINE : RED);
             }
         } else {
-            bigLetter(x, y + 1, KEY_W - 2, (uint8_t)(k + 1), ink, shadow);
+            bigLetter(x, y + 1, KEY_W - 2, (uint8_t)(k + 1), ink, on ? WOOD : FELT_LT, shadow);
         }
     }
     // The glove comes down on a key as it is pressed.
