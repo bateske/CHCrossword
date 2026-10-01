@@ -615,10 +615,14 @@ static void drawBoard(uint32_t frame) {
         uint8_t ink = on ? INK : WHITE, shadow = on ? WOOD : INK;
         tile(x, y, KEY_W - 1, KEY_H - 1, on ? FX_B : FELT, on ? WOOD : FELT_DK, NAVY);
         if (k == KEY_DEL) {
-            text35x2(x + 4, y + 1, "<", shadow);
-            text35x2(x + 3, y, "<", ink);
+            // Rub out: a red triangle pointing back, its lower half in shade.
+            for (int r = -3; r <= 3; r++) {
+                int in = r < 0 ? -2 * r : 2 * r;
+                gfx_hline(x + 4 + in, y + 6 + r, 7 - in, shadow);
+                gfx_hline(x + 3 + in, y + 5 + r, 7 - in, r > 0 ? WINE : RED);
+            }
         } else {
-            bigLetter(x, y, KEY_W - 2, (uint8_t)(k + 1), ink, shadow);
+            bigLetter(x, y + 1, KEY_W - 2, (uint8_t)(k + 1), ink, shadow);
         }
     }
     // The glove comes down on a key as it is pressed.
