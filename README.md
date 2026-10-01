@@ -4,10 +4,11 @@ A crossword for the [CHGame](https://github.com/bateske/CH32SerialBoot) handheld
 (CH32X035 RISC-V, 128x128 colour LCD, piezo), in the casino of
 [CHBlackjack](https://github.com/bateske/CHBlackjack) and the tables after it:
 full 13x13 puzzles with the whole grid on screen, ivory tiles on green felt,
-a camera that whips in to a close-up - bevelled tiles, the clue numbers in
-their corners, letters in a serif face - whenever you type or hold B, a
-letter board that slides up to type on with a glove that pokes the keys, and
-a score attack on top of the solving. A right word locks in gold, tile by tile,
+a pointing glove and a rainbow frame on the square you are at, a camera that
+whips in to a close-up - bevelled tiles, the clue numbers in their corners,
+letters in an anti-aliased serif face - whenever you type or hold B, a letter
+board of felt-green keys that slides up to type on, and a score attack on
+top of the solving. A right word locks in gold, tile by tile,
 each a note up the scale; words in a row build a combo up to x5; one letter
 that finishes two words is a CROSS!; one word in every puzzle is the JACKPOT,
 worth three times over; a wrong word buzzes and shakes the table;
@@ -19,10 +20,10 @@ par and one to three stars to keep.
 | Title | The puzzle list | The first words |
 |---|---|---|
 | ![title](docs/title.gif) | ![list](docs/list.gif) | ![words](docs/words.gif) |
-| **Down the grid** | | |
-| ![combo](docs/combo.gif) | | |
-| **The close-up (hold B)** | **A wrong word** | **The last word** |
-| ![zoom](docs/zoom.gif) | ![wrong](docs/wrong.gif) | ![solved](docs/solved.gif) |
+| **The close-up (hold B)** | **Down the grid** | **A wrong word** |
+| ![zoom](docs/zoom.gif) | ![combo](docs/combo.gif) | ![wrong](docs/wrong.gif) |
+| **The last word** | | |
+| ![solved](docs/solved.gif) | | |
 
 (Captured from the PC simulator in `tools/chsim`, which runs the real game
 and graphics code and renders what the device shows. The game has been built
@@ -50,8 +51,8 @@ You need the Arduino IDE (2.x) or `arduino-cli`, and:
 The game needs **link-time optimisation**: pick *Tools > Optimize > Smallest
 + LTO*, and *Tools > USB > Upload only* (the game has no use for USB Serial,
 and uploading works as before). That is 50.4 KB of the 50,944-byte
-application region, with room left for the two flash pages that hold your
-saved puzzle and records. From the command line:
+application region: all of it but the two flash pages that hold your saved
+puzzle and records. From the command line:
 
     arduino-cli compile -b CHGame:ch32v:CHGame:opt=oslto,rtlib=nano,periph=game,usb=uploadonly CHCrossword
     arduino-cli upload  -b CHGame:ch32v:CHGame -p COMx CHCrossword
@@ -66,14 +67,15 @@ how cards up to 32 GB come. The game plays without a card.
 
 | | On the grid | On the letter board |
 |---|---|---|
-| **D-pad** | Move to the next open square | Move the glove |
+| **D-pad** | Move to the next open square | Move to another key |
 | **A** | Bring up the letter board | Press the key |
 | **B** | Tap: turn the word, across / down. Hold: the close-up | Rub out (hold: keep rubbing) |
 | **SELECT** | Jump to the next clue not done | Turn the word |
 | **START** | Pause | Put the board away |
 
 The clue of the word you are on is under the grid, with its number (`14A`,
-`7D`); the word is tinted and the square you are on pulses. Bringing up the
+`7D`); the word is tinted, and the square you are on has a rainbow frame
+and the glove pointing at it (from below, on the top rows). Bringing up the
 letter board brings the camera in round the word, twice the size, and it
 follows as you type; typing moves on to the word's next empty square and
 puts the board away (and the camera back) when the word is full. Holding B
@@ -170,8 +172,12 @@ ready for clues.
     python tools/chsim/chdrive.py --sim . --card out/card.img tools/scripts/card_packs.txt out/card
     python tools/device.py build [--debug] | upload | run SCRIPT OUTDIR
 
+(A `--debug` build for the board adds the serial debug protocol the scripts
+drive it through; to make room it carries only the first three built-in
+puzzles and leaves out saving and the options screen.)
+
 The simulator needs a C++ compiler (`CHSIM_CXX`, zig, clang++ or g++) and
-Python with `pillow`. The host tests hold the game's decoder to the Python
+Python with `pillow` (`tools/requirements.txt`). The host tests hold the game's decoder to the Python
 reference on every puzzle, play whole puzzles through the rules, and read
 packs out of FAT16 and FAT32 images - fragmented files, long names, decoy
 entries, files that are not packs - with the card failing at every possible
