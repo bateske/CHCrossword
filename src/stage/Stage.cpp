@@ -43,6 +43,10 @@ struct Float { int16_t x, y; int16_t v; uint8_t t, c; };
 static Float floats[3];
 static uint16_t shownScore;
 static uint8_t lastMult, comboT;
+static bool dirty;                  // something on screen changed
+static uint16_t drawnSecond;
+
+void invalidate() { dirty = true; }
 
 // Notes for a locking word's tiles: up a major pentatonic scale.
 static const uint16_t SCALE[12] = {1047, 1175, 1319, 1568, 1760, 2093, 2349, 2637, 3136, 3520, 4186, 4186};
@@ -73,6 +77,7 @@ static void refresh() {
         clueOf = curWord;
         if (curWord != NONE) clue(curWord, clueText);
     }
+    dirty = true;
 }
 
 void enter() {
@@ -91,6 +96,7 @@ void enter() {
     wrongT = solvedT = comboT = 0;
     shownScore = game::st.score;
     lastMult = game::multiplier();
+    dirty = true;
     refresh();
 }
 
@@ -143,6 +149,7 @@ void nextClue() {
 void openBoard() {
     if (curWord == NONE || game::st.solved) return;
     board = true;
+    dirty = true;
     audio::sfx(Sfx::Open);
 }
 
@@ -157,6 +164,7 @@ void moveKey(int dx, int dy) {
     c = (c + KEY_COLS) % KEY_COLS;
     r = (r + 3) % 3;
     key = (uint8_t)(r * KEY_COLS + c);
+    dirty = true;
 }
 
 static void addFloat(int x, int y, int v, uint8_t c) {
@@ -177,6 +185,7 @@ static void show(const game::Events &e) {
         l.w = e.lock[i]; l.t = 0; l.on = 1; l.cross = e.cross;
         l.points = (uint16_t)(e.points[i] + (i == 0 ? e.bonus : 0));
     }
+    dirty = true;
     if (e.cross) {
         fx::banner("CROSS!", fx::B_RAINBOW, 52, 60);
         audio::sfx(Sfx::Cross);
@@ -242,6 +251,7 @@ void rubOut() {
         game::place(cur, 0);
         audio::sfx(Sfx::Rub);
     }
+    dirty = true;
 }
 
 void reveal() {
@@ -262,6 +272,7 @@ void checkWord() {
     addFloat(x, y, -(int)game::CHECK_COST, RED);
     if (bad) { fx::shake(8, 2); audio::sfx(Sfx::Wrong); }
     else audio::sfx(Sfx::Coin);
+    dirty = true;
     // (Checking off never ends a puzzle here: the last right letter does.)
 }
 
@@ -270,8 +281,6 @@ bool solvedShown() { return solvedT > 170; }
 
 void update() {
     // The board slides; the grid follows the cursor above it.
-    if (board && boardT < 8) boardT++;
-    if (!board && boardT) boardT--;
     int target = 0;
     if (board) {
         int view = box - PANEL_H;
@@ -282,6 +291,13 @@ void update() {
         if (target > most) target = most;
         if (target < 0) target = 0;
     }
+    // Anything in motion means a new frame to draw.
+    int lo, hi;
+    if ((board ? boardT < 8 : boardT) || scroll != target || pokeT || wrongT || comboT || solvedT ||
+        fx::activeRows(lo, hi) || shownScore != game::st.score || game::seconds() != drawnSecond)
+        dirty = true;
+    if (board && boardT < 8) boardT++;
+    if (!board && boardT) boardT--;
     for (uint8_t i = 0; i < 3; i++) {
         if (scroll < target) scroll++;
         if (scroll > target) scroll--;
@@ -294,6 +310,7 @@ void update() {
     // then what the word was worth floats off it.
     for (auto &l : locks) {
         if (!l.on) continue;
+        dirty = true;
         uint8_t len = wLen[l.w];
         if (l.t % POP == 0 && l.t / POP < len) {
             uint8_t k = (uint8_t)(l.t / POP);
@@ -314,11 +331,20 @@ void update() {
         }
         if (l.t >= len * POP + 8) l.on = 0;
     }
+    // A step up the multiplier: the sign says so.
     uint8_t m = game::multiplier();
-    if (m > lastMult) comboT = 60;
+    if (m > lastMult) {
+        comboT = 60;
+        if (!fx::bannerActive()) {
+            char text[10];
+            memcpy(text, "COMBO X2!", 10);
+            text[7] = (char)('0' + m);
+            fx::banner(text, fx::B_GOLD, 52, 46);
+        }
+    }
     lastMult = m;
 
-    for (auto &f : floats) if (f.t) { f.t--; if (f.t & 1) f.y--; }
+    for (auto &f : floats) if (f.t) { dirty = true; f.t--; if (f.t & 1) f.y--; }
     // The score counts up to where it is.
     uint16_t s = game::st.score;
     if (shownScore < s) shownScore = (uint16_t)(shownScore + (s - shownScore + 7) / 8);
@@ -338,53 +364,81 @@ void update() {
 }
 
 // --- Drawing --------------------------------------------------------------------
-static void drawCell(uint8_t c, uint32_t frame) {
-    int x, y;
-    cellXY(c, x, y);
-    if (y <= -cs || y >= 128) return;
-    uint8_t v = cell[c], face = WHITE, ink = INK;
-    int grow = 0;
-    bool inWord = false;
-    if (curWord != NONE) {
-        uint8_t st = step(curWord), d = (uint8_t)(c - wStart[curWord]);
-        inWord = c >= wStart[curWord] && d % st == 0 && d / st < wLen[curWord] &&
-                 (isDown(curWord) || c / n == wStart[curWord] / n);
-    }
-    if (inWord) face = CYAN;
-    bool lockedNow = v & LOCKED;
-    // A locking word's tiles turn gold one after another, each with a pop.
+// Is cell c one of word w's?
+static bool inWord(uint8_t c, uint8_t w) {
+    if (w == NONE || c < wStart[w]) return false;
+    uint8_t st = step(w), d = (uint8_t)(c - wStart[w]);
+    return d % st == 0 && d / st < wLen[w] && (isDown(w) || c / n == wStart[w] / n);
+}
+
+// How a cell looks this frame: its tile's colour, its letter's, and whether
+// it is popping (drawn a pixel larger all round).
+static uint8_t look(uint8_t c, uint32_t frame, uint8_t &ink, bool &grow) {
+    uint8_t v = cell[c], face = inWord(c, curWord) ? CYAN : WHITE;
+    ink = (v & REVEALED) ? WINE : INK;
+    grow = false;
+    bool lockedNow = v & LOCKED, shine = false;
+    // A locking word's tiles turn gold one after another, each with a pop,
+    // and the word shines once the last has.
     for (auto &l : locks) {
-        if (!l.on) continue;
-        uint8_t st = step(l.w), d = (uint8_t)(c - wStart[l.w]);
-        if (c < wStart[l.w] || d % st || d / st >= wLen[l.w] || (!isDown(l.w) && c / n != wStart[l.w] / n)) continue;
-        int since = (int)l.t - (d / st) * POP;
+        if (!l.on || !inWord(c, l.w)) continue;
+        int since = (int)l.t - ((c - wStart[l.w]) / step(l.w)) * POP;
         if (since < 0) lockedNow = false;
-        else if (since < 5) { grow = since < 3 ? 1 : 0; face = WHITE; lockedNow = false; }
+        else if (since < 5) { grow = since < 3; face = WHITE; lockedNow = false; }
+        else if (l.t >= wLen[l.w] * POP) shine = true;
     }
-    if (lockedNow) face = GOLD;
-    if (v & REVEALED) ink = WINE;
-    if (wrongT && (wrongT & 4)) {
-        for (uint8_t i = 0; i < wrongN; i++) {
-            uint8_t w = wrongW[i], st = step(w), d = (uint8_t)(c - wStart[w]);
-            if (c >= wStart[w] && d % st == 0 && d / st < wLen[w] && (isDown(w) || c / n == wStart[w] / n) &&
-                !(v & LOCKED)) { face = RED; ink = WHITE; }
-        }
-    }
+    if (lockedNow) face = shine ? FX_B : GOLD;
+    if (wrongT && (wrongT & 4) && !(v & LOCKED))
+        for (uint8_t i = 0; i < wrongN; i++)
+            if (inWord(c, wrongW[i])) { face = RED; ink = WHITE; }
     if (solvedT) {
         // A wave from the top left corner, then the rainbow all over.
         int wave = (int)solvedT * 2 - (c / n + c % n) * 3;
-        if (wave >= 0 && wave < 8) { face = WHITE; grow = 1; }
+        if (wave >= 0 && wave < 8) { face = WHITE; grow = true; }
         else if (wave >= 8 && ((c / n + c % n + (frame >> 3)) & 3) == 0) face = FX_A;
+    } else if (c == cur) {
+        face = FX_B;
     }
-    if (c == cur && !game::st.solved) face = (frame & 16) ? FX_B : (inWord ? WHITE : FX_B);
-    gfx_fillRect(x - grow, y - grow, cs - 1 + 2 * grow, cs - 1 + 2 * grow, face);
-    if (v & LETTER) letter(x + (cs == 8 ? 3 : 2), y + (cs == 8 ? 1 : 0), v & LETTER, ink);
+    return face;
 }
 
+// The grid. Tiles of one colour side by side are painted as one bar and
+// the gaps between them ruled in afterwards: a third of the fills that a
+// tile at a time takes (a full grid is the frame's biggest cost).
 static void drawGrid(uint32_t frame) {
     gfx_fillRect(0, 0, box, box, FELT_DK);
-    for (uint16_t c = 0; c < n * n; c++)
-        if (sol[c]) drawCell((uint8_t)c, frame);
+    uint8_t inks[MAX_N];
+    uint16_t pops = 0;                      // columns of this row that are popping
+    for (uint8_t r = 0; r < n; r++) {
+        int y = off + r * cs - scroll;
+        if (y <= -cs || y >= box) continue;
+        uint8_t runFace = 0, runFrom = 0;
+        bool run = false;
+        pops = 0;
+        for (uint8_t col = 0; col <= n; col++) {
+            uint8_t c = (uint8_t)(r * n + col), face = 0;
+            bool open = col < n && sol[c], grow = false;
+            if (open) {
+                face = look(c, frame, inks[col], grow);
+                if (grow) pops |= (uint16_t)(1u << col);
+            }
+            if (run && (!open || face != runFace)) {
+                gfx_fillRect(off + runFrom * cs, y, (col - runFrom) * cs - 1, cs - 1, runFace);
+                run = false;
+            }
+            if (open && !run) { run = true; runFace = face; runFrom = col; }
+        }
+        // The gaps, then the popping tiles over them, then the letters.
+        for (uint8_t col = 1; col < n; col++)
+            if (sol[r * n + col] && sol[r * n + col - 1]) gfx_vline(off + col * cs - 1, y, cs - 1, FELT_DK);
+        for (uint8_t col = 0; col < n; col++) {
+            uint8_t c = (uint8_t)(r * n + col);
+            if (!sol[c]) continue;
+            int x = off + col * cs;
+            if (pops >> col & 1) gfx_fillRect(x - 1, y - 1, cs + 1, cs + 1, WHITE);
+            if (cell[c] & LETTER) letter(x + (cs == 8 ? 3 : 2), y + (cs == 8 ? 1 : 0), cell[c] & LETTER, inks[col]);
+        }
+    }
     // The cursor's frame, over its neighbours' edges.
     if (!game::st.solved) {
         int x, y;
@@ -435,7 +489,7 @@ static void drawBoard(uint32_t frame) {
         int x = 1 + (k % KEY_COLS) * KEY_W, y = y0 + 2 + (k / KEY_COLS) * KEY_H;
         bool on = k == key;
         if (on && pokeT > 3) y++;
-        gfx_fillRect(x, y, KEY_W - 1, KEY_H - 1, on ? ((frame & 8) ? FX_B : GOLD) : SKIN);
+        gfx_fillRect(x, y, KEY_W - 1, KEY_H - 1, on ? FX_B : SKIN);
         gfx_hline(x, y + KEY_H - 2, KEY_W - 1, on ? WOOD : SILVER);
         if (k == 12 || k == 22) {
             const uint8_t *g = k == 12 ? WIDE_M : WIDE_W;
@@ -503,7 +557,10 @@ static void drawFloats() {
     }
 }
 
-void render(uint32_t frame) {
+bool render(uint32_t frame) {
+    if (!dirty) return false;
+    dirty = false;
+    drawnSecond = game::seconds();
     drawGrid(frame);
     fx::applyShake(0, box - 1);
     drawHud(frame);
@@ -512,6 +569,7 @@ void render(uint32_t frame) {
     drawFloats();
     fx::drawParticles(2);
     fx::drawBanner();
+    return true;
 }
 
 }  // namespace stage

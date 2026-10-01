@@ -20,13 +20,11 @@
 #endif
 #endif
 
-// Device debug builds carry the ~2 KB protocol and USB Serial, so they
-// leave out what the measurements made with them never need: saving and
-// the options screen (puzzles are started with the protocol's G command).
-// The simulator (not flash-bound) and release builds keep everything.
-#if CHCW_DEBUG && !defined(CHSIM) && !defined(CHCW_FULL)
-#define CHCW_LEAN        1
-#else
+// A device debug build carries the ~2 KB protocol and USB Serial, and still
+// fits whole. Should the game outgrow that, CHCW_LEAN leaves saving and the
+// options screen out of it (puzzles are started with the protocol's G
+// command). Opt-in: -DCHCW_LEAN=1.
+#ifndef CHCW_LEAN
 #define CHCW_LEAN        0
 #endif
 

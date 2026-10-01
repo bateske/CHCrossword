@@ -66,6 +66,7 @@ static void enter(Scr s) {
     sel = 0;
     fadeIn = 8;
     fx::clear();
+    stage::invalidate();
     if (s == Scr::Title) audio::sfx(Sfx::Title);
     if (s == Scr::Select) {
         listStale = true;
@@ -149,6 +150,14 @@ static bool menuNav(uint8_t n) {
 static void panel(int y, int h) {
     fillRound(10, y, 108, h, 3, NAVY);
     roundRect(10, y, 108, h, 3, GOLD);
+}
+
+// A seven-point-wide star, each pixel k x k.
+static void star(int x, int y, uint8_t c, int k) {
+    static const uint8_t COLS[7] = {0x04, 0x6C, 0x3C, 0x1F, 0x3C, 0x6C, 0x04};
+    for (int i = 0; i < 7; i++)
+        for (int r = 0; r < 7; r++)
+            if (COLS[i] >> r & 1) gfx_fillRect(x + i * k, y + r * k, k, k, c);
 }
 
 static char *fmtTime(char *p, uint32_t s) {
@@ -250,6 +259,14 @@ static bool continueGame() {
     return true;
 }
 
+// The title's little show: LUCKY across and ACE down through its C. Each is
+// "solved" in turn - its clue under the tiles, then a gold lock along it -
+// and the whole thing starts over.
+static const uint16_t TITLE_LOOP = 300;
+static const char TITLE_WORD[] = "LUCKYAE";
+static const int8_t TITLE_AT[7][2] = {{0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}, {2, 0}, {2, 2}};
+static const uint8_t TITLE_LOCK[7] = {80, 84, 88, 92, 96, 170, 178};      // when each tile locks
+
 static void titleUpdate() {
     uint8_t items[4], n = titleItems(items);
     if (sel >= n) sel = 0;
@@ -265,6 +282,10 @@ static void titleUpdate() {
 #endif
         }
     }
+    uint16_t phase = (uint16_t)(t % TITLE_LOOP);
+    for (uint8_t i = 0; i < 7; i++)
+        if (phase == TITLE_LOCK[i])
+            fx::burst(fx::SPARK, 37 + TITLE_AT[i][0] * 13, 37 + TITLE_AT[i][1] * 13, 5, 16, FX_B);
 }
 
 // A big tile: a letter of the 3x5 font at twice the size.
@@ -280,23 +301,25 @@ static void titleRender(uint32_t frame) {
     fillRound(6, 5, 116, 22, 4, NAVY);
     roundRect(6, 5, 116, 22, 4, GOLD);
     heading("CROSSWORD", 10);
-    // LUCKY across and ACE down through its C: the tiles drop in, then a
-    // gold lock runs along each word in turn.
-    static const char WORD[] = "LUCKYAE";
-    static const int8_t AT[7][2] = {{0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}, {2, 0}, {2, 2}};
-    int phase = (int)(t % 240);
+    uint16_t phase = (uint16_t)(t % TITLE_LOOP);
     for (uint8_t i = 0; i < 7; i++) {
+        // The tiles drop in once, one after another.
         int since = (int)t - 6 - i * 5;
         if (since < 0) continue;
-        int y = 35 + AT[i][1] * 13, drop = since < 8 ? ((256 - fx::ease(fx::OUT_BOUNCE, since, 8)) * 20) >> 8 : 0;
+        int drop = since < 8 ? ((256 - fx::ease(fx::OUT_BOUNCE, since, 8)) * 20) >> 8 : 0;
         uint8_t face = WHITE;
-        bool across = i < 5, downW = i >= 5 || i == 2;
-        int k = across ? i : i == 5 ? 0 : 2;
-        if (across && phase >= 90 + i * 4 && phase < 200) face = GOLD;
-        if (downW && phase >= 130 + (i == 2 ? 1 : k) * 4 && phase < 200) face = GOLD;
-        if ((across && phase >= 90 + i * 4 && phase < 94 + i * 4)) face = FX_B;
-        bigTile(31 + AT[i][0] * 13, y - drop, WORD[i], face);
+        if (phase >= TITLE_LOCK[i] && phase < 270) face = phase < TITLE_LOCK[i] + 5 ? FX_B : GOLD;
+        bigTile(31 + TITLE_AT[i][0] * 13, 31 + TITLE_AT[i][1] * 13 - drop, TITLE_WORD[i], face);
     }
+    // The clue being "solved".
+    if (t > 50 && phase >= 30 && phase < 270) {
+        bool second = phase >= 130;
+        const char *id = second ? "2D" : "1A", *clue = second ? "HIGH CARD" : "FORTUNATE";
+        int w = text35Width(clue) + 12, x = 64 - w / 2;
+        text35(x, 72, id, FX_B);
+        text35(x + 12, 72, clue, WHITE);
+    }
+    fx::drawParticles(2);
     uint8_t items[4], n = titleItems(items);
     int y0 = 126 - n * 15;
     for (uint8_t i = 0; i < n; i++) menuItem(y0 + i * 15, ITEM[items[i]], i == sel, frame);
@@ -429,11 +452,18 @@ static uint8_t pauseItems(uint8_t *items) {
 
 static void playUpdate() {
     if (overlay == PAUSE) {
-        uint8_t items[5], n = pauseItems(items);
-        if (arduboy.justPressed(B_BUTTON) || arduboy.justPressed(START_BUTTON)) { overlay = NONE; return; }
-        if (!menuNav(n)) return;
+        uint8_t items[5], n = pauseItems(items), was = sel;
+        if (arduboy.justPressed(B_BUTTON) || arduboy.justPressed(START_BUTTON)) {
+            overlay = NONE;
+            stage::invalidate();
+            return;
+        }
+        bool chosen = menuNav(n);
+        if (sel != was) stage::invalidate();
+        if (!chosen) return;
         audio::sfx(Sfx::Select);
         overlay = NONE;
+        stage::invalidate();
         switch (items[sel]) {
             case P_REVEAL: stage::reveal(); break;
             case P_CHECK:  stage::checkWord(); break;
@@ -445,11 +475,14 @@ static void playUpdate() {
     }
     if (overlay == RESULT) {
         if (resultT < 250) resultT++;
+        stage::invalidate();
+        // The score counts up, ticking.
+        if (resultT < 30 && (resultT & 3) == 0) audio::note((uint16_t)(1500 + resultT * 60), 24);
         // The stars come in one at a time.
         for (uint8_t i = 0; i < result.stars; i++)
             if (resultT == 40 + i * 14) {
                 audio::sfx(Sfx::Star);
-                fx::burst(fx::STAR, 64 + (i * 2 - (result.stars - 1)) * 9, 94, 8, 30, GOLD);
+                fx::burst(fx::STAR, 46 + i * 18, 93, 8, 30, GOLD);
             }
         if (resultT > 30 && arduboy.justPressed(A_BUTTON)) {
             audio::sfx(Sfx::Select);
@@ -488,47 +521,54 @@ static void playUpdate() {
         if (arduboy.justPressed(A_BUTTON)) stage::openBoard();
         else if (arduboy.justPressed(B_BUTTON)) { stage::flip(); audio::sfx(Sfx::Cursor); }
         else if (arduboy.justPressed(SELECT_BUTTON)) { stage::nextClue(); audio::sfx(Sfx::Select); }
-        else if (arduboy.justPressed(START_BUTTON)) { overlay = PAUSE; sel = 0; audio::sfx(Sfx::Select); }
+        else if (arduboy.justPressed(START_BUTTON)) {
+            overlay = PAUSE;
+            sel = 0;
+            audio::sfx(Sfx::Select);
+            stage::invalidate();
+        }
     }
     stage::update();
 }
 
 static void playRender(uint32_t frame) {
-    stage::render(frame);
+    if (!stage::render(frame)) return;
     char buf[40], *p;
     if (overlay == PAUSE) {
         uint8_t items[5], n = pauseItems(items);
-        int y0 = 52 - n * 7;
-        fillRound(4, y0 - 7, 120, n * 14 + 11, 3, NAVY);
-        roundRect(4, y0 - 7, 120, n * 14 + 11, 3, GOLD);
+        int y0 = 48 - n * 7;
+        fillRound(4, y0 - 7, 120, n * 14 + 21, 3, NAVY);
+        roundRect(4, y0 - 7, 120, n * 14 + 21, 3, GOLD);
         for (uint8_t i = 0; i < n; i++) {
             int y = y0 + i * 14;
             if (i == sel) fillRound(8, y - 3, 112, 13, 3, INK);
             const char *s = PAUSE_ITEM[items[i]];
             text35x2(64 - text35x2Width(s) / 2, y - 1, s, i == sel ? FX_B : WHITE);
         }
+        centred35(y0 + n * 14 + 4, "A TYPE  B TURN  SELECT NEXT", SILVER);
     } else if (overlay == RESULT) {
-        panel(30, 86);
-        centred2(35, puz::title, GOLD);
+        panel(30, 88);
+        // The puzzle's name, as large as it fits.
+        if (fontWidth(puz::title) <= 102) centred2(34, puz::title, GOLD);
+        else if (text35x2Width(puz::title) <= 102) text35x2(64 - text35x2Width(puz::title) / 2, 36, puz::title, GOLD);
+        else centred35(39, puz::title, GOLD);
         p = fmtStr(buf, "TIME ");
         p = fmtTime(p, result.seconds);
         p = fmtStr(p, "  PAR ");
         fmtTime(p, result.par);
-        centred35(52, buf, WHITE);
+        centred35(51, buf, WHITE);
         // The score counts up.
         uint32_t shown = resultT >= 30 ? result.score : (uint32_t)result.score * resultT / 30;
         p = fmtStr(buf, "SCORE ");
         fmtInt(p, (int32_t)shown);
-        centred2(61, buf, FX_B);
-        fmtStr(buf, result.perfect ? "PERFECT! +1000" : result.clean ? "NO REVEALS +250" : "");
-        centred35(78, buf, CYAN);
+        centred2(60, buf, FX_B);
+        centred35(77, result.perfect ? "PERFECT! +1000" : result.clean ? "NO LETTERS REVEALED +250" : "", CYAN);
         for (uint8_t i = 0; i < 3; i++) {
             bool on = i < result.stars && resultT >= 40 + i * 14;
-            text35x2(64 - 27 + i * 18 + 6, 87, "*", on ? FX_B : NAVY);
-            if (!on) text35x2(64 - 27 + i * 18 + 6, 87, "*", FELT_DK);
+            star(39 + i * 18, 86, on ? FX_B : INK, 2);
         }
-        if (newBest && (frame & 16)) centred35(101, "NEW BEST!", FX_A);
-        centred35(109, "A NEXT   B MENU", SILVER);
+        if (newBest && resultT > 90) centred35(103, "NEW BEST!", FX_A);
+        centred35(110, "A NEXT   B MENU", SILVER);
         fx::drawParticles(2);
     }
 }
@@ -609,6 +649,7 @@ static void optionsRender(uint32_t frame) {
 //   U <seconds>         put the clock forward
 //   J <T|S|O>           jump to title / the puzzle list / options
 //   X <0|1>             (simulator) put the card in / pull it out
+//   Q                   (simulator) time the calibration primitives
 static bool debugHook(char cmd, const char *args) {
     char buf[120], *p;
     switch (cmd) {
@@ -692,6 +733,23 @@ static bool debugHook(char cmd, const char *args) {
         case 'X':
             sim_cardEject(*args == '1');
             return true;
+        case 'Q': {
+            // Calibration for chdrive's `cal`: host ns for the primitives the
+            // CHGfx benchmark measured on the board (benchmark-results.txt).
+            static uint8_t spr[8 * 16];
+            memset(spr, 0x3F, sizeof spr);
+            uint64_t t0, r[5];
+            t0 = sim_hostNanos(); for (int i = 0; i < 200; i++) gfx_clear((uint8_t)i); r[0] = (sim_hostNanos() - t0) / 200;
+            t0 = sim_hostNanos(); for (int i = 0; i < 20000; i++) gfx_hline(0, i & 127, 128, (uint8_t)i); r[1] = (sim_hostNanos() - t0) / 20000;
+            t0 = sim_hostNanos(); for (int i = 0; i < 2000; i++) gfx_blit(spr, i & 63, i & 63, 16, 16, 15); r[2] = (sim_hostNanos() - t0) / 2000;
+            t0 = sim_hostNanos(); for (int i = 0; i < 1000; i++) gfx_text(0, i & 63, "ABCDEFGHIJKLMNOPQRSTUVWX", 1); r[3] = (sim_hostNanos() - t0) / 1000;
+            t0 = sim_hostNanos(); for (int i = 0; i < 1000; i++) gfx_fillCircle(64, 64, 30, (uint8_t)i); r[4] = (sim_hostNanos() - t0) / 1000;
+            p = fmtStr(buf, "CAL");
+            for (int k = 0; k < 5; k++) { *p++ = ' '; p = fmtInt(p, (int32_t)r[k]); }
+            fmtStr(p, "\n");
+            dbg::print(buf);
+            return true;
+        }
 #endif
     }
     return false;

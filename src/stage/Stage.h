@@ -35,7 +35,11 @@ void reveal();                      // the cursor's letter (the pause menu)
 void checkWord();                   // checking off: rub out the word's wrong letters
 
 void update();                      // once per logic tick
-void render(uint32_t frame);
+void invalidate();                  // draw the next frame whatever (an overlay changed)
+// Draws the screen if anything on it changed since it was last drawn.
+// False: nothing did, and the framebuffer is as it was (the palette still
+// animates what is there).
+bool render(uint32_t frame);
 bool busy();                        // a word is locking, or the puzzle's last show is on
 bool solvedShown();                 // the end-of-puzzle show has had its time
 

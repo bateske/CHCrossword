@@ -12,12 +12,15 @@ src/gfx/Draw.cpp is Press Play On Tape's.
 
 The SD card block driver and FAT reader (src/sd) are HypeRunner's (MIT,
 clean-room from the SD and FAT specifications), in the polled, read-only
-form CHWords cut them down to.
+form CHWords cut them down to (a snapshot of 2026-10-01); the FAT image
+builder the tests and the simulator's card use (tools/puzzles/fatimg.py) is
+HypeRunner's too.
 
-The grid filler (tools/puzzles/fill.py) chooses words from the ENABLE word
-list (public domain), ranked by Peter Norvig's Google Books word counts;
-neither list is part of the game. The puzzles' grids were filled with it and
-their clues written for this game.
+The grid maker (tools/puzzles/fill.py) chooses words from the ENABLE word
+list (public domain), keeping to common ones by the word frequencies of the
+wordfreq package (Robyn Speer; its data is CC BY-SA 4.0). Neither is part of
+the game: they are build-time aids. The puzzles' grids were filled with the
+grid maker and their clues written for this game.
 
 Everything else - the puzzles, their format and tools, the rules, the score
 and the presentation - is new, under the Apache License 2.0 (LICENSE).
