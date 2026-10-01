@@ -5,6 +5,7 @@
 Sources, all in tools/art/:
   * hand.png, else hand.txt: the pointing glove.
   * font.txt: the display font (the title, banners, headings).
+  * tilefont.txt: the close-up's letters (from tools/tilefont.py).
 
 Outputs:
   src/assets/Assets.h / Assets.cpp   - generated, do not edit
@@ -208,6 +209,27 @@ def main():
     decls.append(f"extern const uint8_t FONT[{len(data)}];                         // the display font (tools/art/font.txt): per glyph its\n"
                  "                                                            // character, width, top << 4 | rows, the rows' bits; 0 ends")
     total += len(data)
+
+    # The close-up's letters: 26 glyphs of 12 words each - width | rows << 8,
+    # then the rows from the capitals' top, the leftmost pixel in bit 15.
+    glyphs, cur = {}, None
+    for ln in (ART / "tilefont.txt").read_text().splitlines():
+        if ln.startswith("= "):
+            cur = glyphs.setdefault(ln[2], [])
+        elif ln.strip() and not ln.startswith("# "):
+            cur.append(ln.strip())
+    words = []
+    for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        rows = glyphs[ch]
+        w = max(len(r) for r in rows)
+        assert w <= 16 and len(rows) <= 11, ch
+        words.append([w | len(rows) << 8] + [sum(1 << (15 - i) for i, v in enumerate(r) if v == "#") for r in rows]
+                     + [0] * (11 - len(rows)))
+    defs.append("const uint16_t TILEFONT[26][12] = {\n" +
+                "".join("    {" + ", ".join(f"0x{v:04X}" for v in g) + "},\n" for g in words) + "};")
+    decls.append("extern const uint16_t TILEFONT[26][12];                    // the close-up's letters (tools/art/tilefont.txt): width |\n"
+                 "                                                            // rows << 8, then the rows, leftmost pixel in bit 15")
+    total += 26 * 24
 
     # The palette, for whoever edits the art.
     sw = Image.new("RGB", (16 * 24, 24))

@@ -2,7 +2,8 @@
 //
 // With checking on (the default), a word locks the moment it is complete
 // and right - gold tiles, points, a streak that multiplies them - and a
-// complete wrong word costs a little and ends the streak. With checking
+// complete wrong word costs a little and ends the streak. One word of every
+// puzzle, always the same one, is its jackpot: it pays three times over. With checking
 // off there are no locks: the grid is judged only when every cell is right.
 // No graphics in here: the host tests build this file as it is.
 #pragma once
@@ -18,6 +19,7 @@ constexpr uint8_t  MULT_MAX = 5;
 constexpr uint16_t QUICK_TICKS = 8 * 60;    // a lock within 8 s of the last one...
 constexpr uint16_t QUICK_PER_LETTER = 5;    // ... is worth this much more a letter
 constexpr uint16_t CROSS_BONUS = 50;        // one letter completing two words, times the multiplier
+constexpr uint8_t  JACKPOT_TIMES = 3;       // the jackpot word pays this many times over
 constexpr uint16_t WRONG_COST = 20;
 constexpr uint16_t REVEAL_COST = 50;
 constexpr uint16_t CHECK_COST = 25;
@@ -34,6 +36,7 @@ struct State {
     uint8_t misses, reveals;    // wrong words; letters revealed
     uint8_t checking;           // 1: words lock as they are completed
     uint8_t solved;
+    uint8_t jackpot;            // the puzzle's jackpot word (puz::NONE with checking off)
 };
 extern State st;
 
@@ -44,6 +47,7 @@ struct Events {
     uint16_t points[2];         // what each lock was worth
     uint16_t bonus;             // the CROSS bonus
     bool quick, cross, solved, changed;
+    bool jackpot;               // one of the locks was the jackpot word
 };
 
 // The end of a solved puzzle.

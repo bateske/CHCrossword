@@ -10,6 +10,11 @@ pointing glove (tools/art/hand.png) and CHBackgammon's display font
 Arduboy by Press Play On Tape (Apache-2.0); the 3x5 pixel font in
 src/gfx/Draw.cpp is Press Play On Tape's.
 
+The close-up's letters (tools/art/tilefont.txt) are rasterized from DejaVu
+Serif Bold by tools/tilefont.py. DejaVu is freely redistributable: Bitstream
+Vera Fonts Copyright (c) 2003 Bitstream, Inc.; DejaVu changes are in the
+public domain (https://dejavu-fonts.github.io/License.html).
+
 The SD card block driver and FAT reader (src/sd) are HypeRunner's (MIT,
 clean-room from the SD and FAT specifications), in the polled, read-only
 form CHWords cut them down to (a snapshot of 2026-10-01); the FAT image

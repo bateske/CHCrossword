@@ -224,6 +224,17 @@ RAMFUNC(glyph) void glyph(int x, int y, const uint8_t *cols, uint8_t ncols, uint
     }
 }
 
+RAMFUNC(glyph16) void glyph16(int x, int y, const uint16_t *rows, uint8_t nrows, uint8_t c) {
+    c &= 0x0F;
+    for (uint8_t r = 0; r < nrows; r++, y++) {
+        uint32_t bits = rows[r];
+        if (!bits || (unsigned)y >= GFX_H) continue;
+        uint8_t *row = gfx_fb + y * GFX_FB_STRIDE;
+        for (int xx = x; bits; bits = (bits << 1) & 0xFFFF, xx++)
+            if ((bits & 0x8000) && (unsigned)xx < GFX_W) plot(row + (xx >> 1), xx, c);
+    }
+}
+
 RAMFUNC(text35) int text35(int x, int y, const char *str, uint8_t c) {
     int x0 = x;
     for (; *str; str++) {

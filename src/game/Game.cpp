@@ -11,6 +11,18 @@ State st;
 void start(bool checking) {
     memset(&st, 0, sizeof st);
     st.checking = checking;
+    // The jackpot word: one of the longer words, picked by the puzzle's own
+    // letters, so it is the same every time the puzzle is played.
+    st.jackpot = NONE;
+    if (!checking) return;
+    uint32_t h = 0, longest = 0;
+    for (uint16_t c = 0; c < n * n; c++) h = h * 31 + sol[c];
+    for (uint8_t w = 0; w < nWords; w++) if (wLen[w] > longest) longest = wLen[w];
+    uint32_t want = longest > 6 ? 6 : longest, count = 0;
+    for (uint8_t w = 0; w < nWords; w++) count += wLen[w] >= want;
+    uint32_t pick = h % count;
+    for (uint8_t w = 0; w < nWords; w++)
+        if (wLen[w] >= want && !pick--) { st.jackpot = w; break; }
 }
 
 uint8_t multiplier() {
@@ -51,6 +63,7 @@ static void judge(uint8_t c, Events &e, bool charge) {
             uint32_t p = (uint32_t)PER_LETTER * wLen[w] * multiplier();
             if (quick) p += (uint32_t)QUICK_PER_LETTER * wLen[w];
             if (hasRevealed(w)) p /= 2;
+            if (w == st.jackpot) { p *= JACKPOT_TIMES; e.jackpot = true; }
             lockWord(w);
             e.points[e.nLock] = (uint16_t)p;
             e.lock[e.nLock++] = w;
@@ -151,7 +164,7 @@ void save(Record &r) {
 }
 
 void load(const Record &r) {
-    start(r.checking);
+    start(r.checking);              // (the jackpot word with it: it comes from the puzzle)
     st.ticks = r.ticks;
     st.score = r.score;
     st.streak = r.streak;

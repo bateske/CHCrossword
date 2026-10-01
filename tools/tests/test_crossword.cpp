@@ -76,6 +76,9 @@ static void testDecode() {
     }
 }
 
+// What a word's points are multiplied by: three for the jackpot word.
+static unsigned J(int w) { return w == game::st.jackpot ? game::JACKPOT_TIMES : 1; }
+
 // Type a word's letters; returns the last letter's events.
 static game::Events typeWord(int w, const char *wrongAt = nullptr) {
     game::Events e{};
@@ -95,8 +98,9 @@ static void testRules() {
     CHECK(game::multiplier() == 1 && game::st.score == 0);
     // A first word: 10 a letter.
     game::Events e = typeWord(0);
-    CHECK(e.nLock == 1 && e.lock[0] == 0 && e.points[0] == 10 * puz::wLen[0] && !e.cross && !e.solved);
-    CHECK(puz::wordLocked(0) && game::st.streak == 1 && game::st.score == 10 * puz::wLen[0]);
+    CHECK(e.nLock == 1 && e.lock[0] == 0 && e.points[0] == 10 * puz::wLen[0] * J(0) && !e.cross && !e.solved);
+    CHECK(puz::wordLocked(0) && game::st.streak == 1 && game::st.score == 10 * puz::wLen[0] * J(0));
+    CHECK(e.jackpot == (J(0) > 1));
     // A locked cell cannot be changed.
     e = game::place(puz::wStart[0], 5);
     CHECK(!e.changed);
@@ -104,15 +108,15 @@ static void testRules() {
     // A second within eight seconds: the quick bonus.
     uint16_t before = game::st.score;
     e = typeWord(1);
-    CHECK(e.nLock == 1 && e.quick && e.points[0] == 15 * puz::wLen[1]);
-    CHECK(game::st.score == before + 15 * puz::wLen[1]);
+    CHECK(e.nLock == 1 && e.quick && e.points[0] == 15 * puz::wLen[1] * J(1));
+    CHECK(game::st.score == before + 15 * puz::wLen[1] * J(1));
     // After a long think: no quick bonus; the third word in a row makes it x2 for the next.
     game::st.ticks += 20 * 60;
     e = typeWord(2);
-    CHECK(!e.quick && e.points[0] == 10 * puz::wLen[2] && game::st.streak == 3 && game::multiplier() == 2);
+    CHECK(!e.quick && e.points[0] == 10 * puz::wLen[2] * J(2) && game::st.streak == 3 && game::multiplier() == 2);
     game::st.ticks += 20 * 60;
     e = typeWord(3);
-    CHECK(e.points[0] == 20 * puz::wLen[3]);
+    CHECK(e.points[0] == 20 * puz::wLen[3] * J(3));
     // A wrong word (in an empty grid, so nothing else completes): 20 off,
     // the streak gone, the letters stay.
     CHECK(open(0));
@@ -124,7 +128,7 @@ static void testRules() {
     CHECK(game::st.score == 80 && puz::wordFull(4) && !puz::wordLocked(4));
     // Put right, it locks at x1.
     e = game::place(puz::cellOf(4, 0), puz::sol[puz::cellOf(4, 0)]);
-    CHECK(e.nLock == 1 && e.points[0] == 10 * puz::wLen[4] && game::st.streak == 1);
+    CHECK(e.nLock == 1 && e.points[0] == 10 * puz::wLen[4] * J(4) && game::st.streak == 1);
     // Rubbing out an unlocked letter.
     int free = -1;
     for (int c = 0; c < puz::n * puz::n; c++)
@@ -143,7 +147,7 @@ static void testRules() {
     e = game::reveal(puz::wStart[0]);
     CHECK(e.changed && game::st.score == 450 && game::st.reveals == 1 && (puz::cell[puz::wStart[0]] & puz::REVEALED));
     e = typeWord(0);
-    CHECK(e.nLock == 1 && e.points[0] == 5 * puz::wLen[0]);
+    CHECK(e.nLock == 1 && e.points[0] == 5 * puz::wLen[0] * J(0));
     // The score never goes below nothing.
     CHECK(open(0));
     game::start(true);
@@ -162,7 +166,19 @@ static void testWhole(bool checking) {
         std::vector<int> order;
         for (int c = 0; c < cells; c++) if (puz::sol[c]) order.push_back(c);
         for (size_t k = order.size(); k > 1; k--) std::swap(order[k - 1], order[rnd() % k]);
-        int locks = 0, crosses = 0;
+        // Every puzzle has a jackpot word, one of its longer ones, and it is
+        // the same one each time; none with checking off.
+        if (checking) {
+            int longest = 0;
+            for (int w = 0; w < puz::nWords; w++) if (puz::wLen[w] > longest) longest = puz::wLen[w];
+            uint8_t jp = game::st.jackpot;
+            CHECK(jp < puz::nWords && puz::wLen[jp] >= (longest > 6 ? 6 : longest));
+            game::start(true);
+            CHECK(game::st.jackpot == jp);
+        } else {
+            CHECK(game::st.jackpot == puz::NONE);
+        }
+        int locks = 0, crosses = 0, jackpots = 0;
         uint32_t sum = 0;
         for (size_t k = 0; k < order.size(); k++) {
             game::st.ticks += 60;
@@ -170,6 +186,7 @@ static void testWhole(bool checking) {
             CHECK(e.changed && e.nWrong == 0);
             locks += e.nLock;
             crosses += e.cross;
+            jackpots += e.jackpot;
             sum += e.points[0] + e.points[1] + e.bonus;
             CHECK(e.solved == (k + 1 == order.size()));
             CHECK(e.cross == (e.nLock == 2));
@@ -177,7 +194,7 @@ static void testWhole(bool checking) {
         CHECK(game::st.solved);
         if (checking) {
             CHECK(locks == puz::nWords && puz::lockedWords() == puz::nWords && game::st.score == sum);
-            CHECK(game::st.streak == locks);
+            CHECK(game::st.streak == locks && jackpots == 1);
         } else {
             CHECK(locks == 0 && game::st.score == 0);
         }

@@ -50,6 +50,8 @@ static Overlay overlay;
 static game::Result result;
 static bool resultDone, newBest;
 static uint8_t resultT;
+static uint8_t bHeld;                // frames B has been down on the grid
+static const uint8_t HOLD = 12;      // ... and how many make it a hold
 
 // ---------------------------------------------------------------------------
 // Flow
@@ -102,6 +104,7 @@ static void applyOptions() {
     audio::setOn(opt.sound != 0);
     pal::setTheme(opt.felt);
     stage::stepAll = opt.skip != 0;
+    stage::viewClose = opt.view != 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +241,7 @@ static bool startPuzzle(uint8_t i) {
     stage::enter();
     overlay = NONE;
     resultDone = false;
+    bHeld = 0;
     go(Scr::Play);
     return true;
 }
@@ -372,6 +376,17 @@ static void selectUpdate() {
     if (arduboy.justPressed(B_BUTTON)) { audio::sfx(Sfx::Select); go(Scr::Title); }
 }
 
+// Every star on the built-in puzzles, and the name that many earn.
+static const char *const RANK[6] = {"ROOKIE", "REGULAR", "SHARP", "CARD SHARK", "HIGH ROLLER", "LEGEND"};
+static const uint8_t RANK_AT[6] = {0, 8, 18, 30, 45, 60};
+
+static uint8_t starTotal() {
+    uint8_t total = 0;
+    for (uint8_t i = 0; i < Progress::BUILTIN; i++)
+        if (bestTime(i)) total = (uint8_t)(total + bestStars(i));
+    return total;
+}
+
 static void stars(int x, int y, uint8_t n, uint8_t of) {
     for (uint8_t i = 0; i < of; i++) text35(x + i * 4, y, "*", i < n ? FX_B : FELT_DK);
 }
@@ -418,7 +433,7 @@ static void selectRender(uint32_t frame) {
         p = fmtInt(buf, r.size); *p++ = 'X'; p = fmtInt(p, r.size);
         p = fmtStr(p, "  ");
         fmtStr(p, LEVEL[r.diff > 5 ? 5 : r.diff]);
-        centred35(104, buf, CYAN);
+        centred35(103, buf, CYAN);
         uint16_t secs;
         uint8_t st = starsOf(listSel, secs);
         if (pack::current() == 0 && secs) {
@@ -427,9 +442,17 @@ static void selectRender(uint32_t frame) {
             p = fmtStr(p, "  ");
             p = fmtInt(p, prog.best[listSel].score * 100);
             fmtStr(p, "+");
-            centred35(113, buf, GOLD);
+            centred35(110, buf, GOLD);
         } else {
-            centred35(113, st ? "SOLVED" : "NOT SOLVED YET", st ? GOLD : SILVER);
+            centred35(110, st ? "SOLVED" : "NOT SOLVED YET", st ? GOLD : SILVER);
+        }
+        if (pack::current() == 0) {
+            uint8_t total = starTotal(), rank = 0;
+            while (rank < 5 && total >= RANK_AT[rank + 1]) rank++;
+            p = fmtInt(buf, total);
+            p = fmtStr(p, total == 1 ? " STAR: " : " STARS: ");
+            fmtStr(p, RANK[rank]);
+            centred35(117, buf, FX_B);
         }
     }
 }
@@ -518,8 +541,17 @@ static void playUpdate() {
         if (dx || dy) {
             if (stage::move(dx, dy)) audio::sfx(Sfx::Cursor);
         }
-        if (arduboy.justPressed(A_BUTTON)) stage::openBoard();
-        else if (arduboy.justPressed(B_BUTTON)) { stage::flip(); audio::sfx(Sfx::Cursor); }
+        // B: let go at once, the word turns; held, the camera goes to the
+        // other view (the close-up, usually) until it is let go.
+        if (arduboy.pressed(B_BUTTON)) {
+            if (bHeld < HOLD && ++bHeld == HOLD) { stage::peek = true; audio::sfx(Sfx::Open); }
+        } else if (bHeld) {
+            if (bHeld < HOLD) { stage::flip(); audio::sfx(Sfx::Cursor); }
+            else audio::sfx(Sfx::Close);
+            bHeld = 0;
+            stage::peek = false;
+        }
+        if (arduboy.justPressed(A_BUTTON)) { stage::openBoard(); bHeld = 0; stage::peek = false; }
         else if (arduboy.justPressed(SELECT_BUTTON)) { stage::nextClue(); audio::sfx(Sfx::Select); }
         else if (arduboy.justPressed(START_BUTTON)) {
             overlay = PAUSE;
@@ -537,8 +569,8 @@ static void playRender(uint32_t frame) {
     if (overlay == PAUSE) {
         uint8_t items[5], n = pauseItems(items);
         int y0 = 48 - n * 7;
-        fillRound(4, y0 - 7, 120, n * 14 + 21, 3, NAVY);
-        roundRect(4, y0 - 7, 120, n * 14 + 21, 3, GOLD);
+        fillRound(4, y0 - 7, 120, n * 14 + 28, 3, NAVY);
+        roundRect(4, y0 - 7, 120, n * 14 + 28, 3, GOLD);
         for (uint8_t i = 0; i < n; i++) {
             int y = y0 + i * 14;
             if (i == sel) fillRound(8, y - 3, 112, 13, 3, INK);
@@ -546,6 +578,7 @@ static void playRender(uint32_t frame) {
             text35x2(64 - text35x2Width(s) / 2, y - 1, s, i == sel ? FX_B : WHITE);
         }
         centred35(y0 + n * 14 + 4, "A TYPE  B TURN  SELECT NEXT", SILVER);
+        centred35(y0 + n * 14 + 11, "HOLD B: THE OTHER VIEW", SILVER);
     } else if (overlay == RESULT) {
         panel(30, 88);
         // The puzzle's name, as large as it fits.
@@ -577,9 +610,10 @@ static void playRender(uint32_t frame) {
 // Options (device debug builds leave the screen out to fit the protocol)
 // ---------------------------------------------------------------------------
 #if !CHCW_LEAN
-enum Opt : uint8_t { O_SOUND, O_FELT, O_CHECK, O_SKIP, O_BACK, OPT_COUNT };
+enum Opt : uint8_t { O_SOUND, O_FELT, O_CHECK, O_SKIP, O_VIEW, O_BACK, OPT_COUNT };
 static const char *const OPT_TEXT[OPT_COUNT] = {
-    "SOUND|OFF|ON", "FELT|GREEN|BLUE|RED|PURPLE", "CHECKING|ON|OFF", "TYPING|SKIPS|STEPS", "BACK",
+    "SOUND|OFF|ON", "FELT|GREEN|BLUE|RED|PURPLE", "CHECKING|ON|OFF", "TYPING|SKIPS|STEPS", "VIEW|WHOLE|CLOSE",
+    "BACK",
 };
 static uint8_t &optByte(uint8_t i) { return ((uint8_t *)&opt)[i]; }
 
@@ -619,20 +653,21 @@ static void optionsRender(uint32_t frame) {
     feltBackdrop();
     heading("OPTIONS", 8);
     for (uint8_t i = 0; i < OPT_COUNT; i++) {
-        int y = 30 + i * 15;
+        int y = 27 + i * 14;
         char label[12], value[12];
         optField(OPT_TEXT[i], 0, label);
         if (i == sel) {
-            fillRound(8, y - 4, 112, 17, 3, NAVY);
-            roundRect(8, y - 4, 112, 17, 3, (frame & 16) ? FX_B : GOLD);
+            fillRound(8, y - 3, 112, 15, 3, NAVY);
+            roundRect(8, y - 3, 112, 15, 3, (frame & 16) ? FX_B : GOLD);
         }
         if (i == O_BACK) { text35x2(64 - text35x2Width(label) / 2, y, label, i == sel ? GOLD : WHITE); continue; }
         text35x2(13, y, label, i == sel ? GOLD : WHITE);
         optField(OPT_TEXT[i], (uint8_t)(optByte(i) + 1), value);
         text35x2(116 - text35x2Width(value), y, value, i == sel ? WHITE : FELT_LT);
     }
-    centred35(109, opt.check ? "NO HELP: JUDGED WHEN FULL" : "RIGHT WORDS LOCK IN GOLD", SILVER);
-    centred35(116, "3X5 FONT: PRESS PLAY ON TAPE", SILVER);
+    centred35(111, sel == O_VIEW ? (opt.view ? "HOLD B FOR THE WHOLE GRID" : "HOLD B FOR THE CLOSE-UP")
+                   : opt.check ? "NO HELP: JUDGED WHEN FULL" : "RIGHT WORDS LOCK IN GOLD", SILVER);
+    centred35(118, "3X5 FONT: PRESS PLAY ON TAPE", SILVER);
 }
 #endif
 

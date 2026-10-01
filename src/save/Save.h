@@ -16,7 +16,8 @@ struct Options {
     uint8_t felt;       // table colour theme (pal::Theme)
     uint8_t check;      // 0: words lock as they are completed; 1: no checking
     uint8_t skip;       // 0: typing steps over filled cells; 1: it goes cell by cell
-    uint8_t pad[4];
+    uint8_t view;       // 0: the whole grid, B held for the close-up; 1: the other way round
+    uint8_t pad[3];
 };
 
 // What has been solved, and how well.

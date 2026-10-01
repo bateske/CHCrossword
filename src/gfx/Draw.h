@@ -30,6 +30,10 @@ void dither(int x, int y, int w, int h, uint8_t c, uint8_t phase);      // 50% c
 // Column-major 1 bpp glyph (bit 0 = top row, <= 8 rows), from SRAM.
 void glyph(int x, int y, const uint8_t *cols, uint8_t ncols, uint8_t c);
 
+// Row-major 1 bpp glyph up to 16 wide (the leftmost pixel in bit 15 of each
+// row): the close-up's letters. From SRAM.
+void glyph16(int x, int y, const uint16_t *rows, uint8_t nrows, uint8_t c);
+
 // PPOT's 3x5 font: 4 px advance, '~' = 2 px space, newline = 7 px down.
 int  text35(int x, int y, const char *str, uint8_t c);
 int  text35Width(const char *str);

@@ -29,7 +29,7 @@ def build(debug):
     out = SKETCH / "build" / ("debug" if debug else "release")
     cmd = ["arduino-cli", "compile", "-b", FQBN if debug else RELEASE, "--build-path", str(out)]
     if debug:
-        cmd += ["--build-property", "build.extra_flags=-DCHCW_DEBUG=1"]
+        cmd += ["--build-property", "build.extra_flags=-DCHCW_DEBUG=1 -DCHCW_LEAN=1"]
     cmd.append(str(SKETCH))
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:

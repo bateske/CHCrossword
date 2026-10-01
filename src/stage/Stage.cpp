@@ -16,12 +16,17 @@ namespace stage {
 using namespace puz;
 
 uint8_t cur, key;
-bool down, board, stepAll;
+bool down, board, stepAll, viewClose, peek;
 
 // --- Layout -------------------------------------------------------------------
 static uint8_t cs;                  // cell pitch: 8, or 7 for the 14s and 15s
 static uint8_t box;                 // the grid's square: 104 or 105 px
-static uint8_t off;                 // a smaller grid is centred in it
+// The camera. Tiles are zs pixels apart - cs for the whole grid, twice
+// that in the close-up, and the sizes between while it whips from one to
+// the other - and the grid's corner is drawn at (-camX, -camY).
+static uint8_t zs;
+static int camX, camY;
+static uint8_t dealT;               // the tiles being laid out as a puzzle starts
 static const int PANEL_H = 42;      // the letter board
 static const int KEY_W = 14, KEY_H = 13;
 
@@ -29,7 +34,6 @@ static uint8_t curWord = NONE;
 static char clueText[CLUE_MAX];
 static uint8_t clueOf = NONE;
 
-static int scroll;                  // px the grid is moved up while the board is open
 static uint8_t boardT;              // 0 shut .. 8 up
 static uint8_t pokeT;               // the glove pressing a key
 
@@ -51,20 +55,46 @@ void invalidate() { dirty = true; }
 // Notes for a locking word's tiles: up a major pentatonic scale.
 static const uint16_t SCALE[12] = {1047, 1175, 1319, 1568, 1760, 2093, 2349, 2637, 3136, 3520, 4186, 4186};
 
-// M and W five columns wide for the grid and the keys: in three columns
-// they are an H with its bar a row out of place.
+// M and W five columns wide in the small letters: in three columns they are
+// an H with its bar a row out of place.
 static const uint8_t WIDE_M[5] = {0x1F, 0x02, 0x04, 0x02, 0x1F};
 static const uint8_t WIDE_W[5] = {0x1F, 0x08, 0x04, 0x08, 0x1F};
 
-// A letter (1..26) centred on column x.
+// A small letter (1..26) centred on column x.
 static void letter(int x, int y, uint8_t v, uint8_t ink) {
     if (v == 13 || v == 23) glyph(x - 2, y, v == 13 ? WIDE_M : WIDE_W, 5, ink);
     else glyph(x - 1, y, FONT35['A' + v - 1 - FONT35_FIRST], 3, ink);
 }
 
+// A large letter (the close-up's and the keys'), centred in w pixels from
+// x, its capitals' top at y.
+static void bigLetter(int x, int y, int w, uint8_t v, uint8_t ink) {
+    const uint16_t *g = TILEFONT[v - 1];
+    glyph16(x + (w - (g[0] & 255) + 1) / 2, y, g + 1, (uint8_t)(g[0] >> 8), ink);
+}
+
 static void cellXY(uint8_t c, int &x, int &y) {
-    x = off + (c % n) * cs;
-    y = off + (c / n) * cs - scroll;
+    x = (c % n) * zs - camX;
+    y = (c / n) * zs - camY;
+}
+
+// The close-up is wanted while typing, and when asked for (B held; or all
+// the time, with B held for the whole grid, if the options say so).
+static bool wantClose() { return !game::st.solved && !dealT && (board || viewClose != peek); }
+
+// Where the camera should be: the cursor in the middle of what shows of the
+// grid, the grid's edges kept to the window's (a grid smaller than the
+// window is centred).
+static void camTarget(int &tx, int &ty) {
+    int size = n * zs, w = box, h = box - (PANEL_H * boardT) / 8;
+    tx = (cur % n) * zs + zs / 2 - w / 2;
+    ty = (cur / n) * zs + zs / 2 - h / 2;
+    if (tx > size - w) tx = size - w;
+    if (ty > size - h) ty = size - h;
+    if (tx < 0) tx = 0;
+    if (ty < 0) ty = 0;
+    if (size < w) tx = -(w - size) / 2;
+    if (size < h) ty = -(h - size) / 2;
 }
 
 static void refresh() {
@@ -83,13 +113,14 @@ static void refresh() {
 void enter() {
     cs = n > 13 ? 7 : 8;
     box = n > 13 ? 105 : 104;
-    off = (uint8_t)((box - n * cs) / 2);
     cur = wStart[0];
     down = false;
-    board = false;
+    board = peek = false;
     key = 0;
-    scroll = 0;
+    zs = cs;
     boardT = pokeT = 0;
+    camTarget(camX, camY);
+    dealT = (uint8_t)(n * 4 + 6);
     clueOf = NONE;
     memset(locks, 0, sizeof locks);
     memset(floats, 0, sizeof floats);
@@ -176,7 +207,7 @@ static void addFloat(int x, int y, int v, uint8_t c) {
 // Where a word's middle is on screen.
 static void wordMid(uint8_t w, int &x, int &y) {
     cellXY(cellOf(w, wLen[w] / 2), x, y);
-    x += cs / 2; y += cs / 2;
+    x += zs / 2; y += zs / 2;
 }
 
 static void show(const game::Events &e) {
@@ -186,8 +217,14 @@ static void show(const game::Events &e) {
         l.points = (uint16_t)(e.points[i] + (i == 0 ? e.bonus : 0));
     }
     dirty = true;
-    if (e.cross) {
-        fx::banner("CROSS!", fx::B_RAINBOW, 52, 60);
+    if (e.jackpot) {
+        fx::banner("JACKPOT!", fx::B_RAINBOW, 40, 80);
+        fx::fountain(30, box, 12);
+        fx::fountain(74, box, 12);
+        audio::sfx(Sfx::Cross);
+        audio::led(audio::LED_PARTY);
+    } else if (e.cross) {
+        fx::banner("CROSS!", fx::B_RAINBOW, 40, 60);
         audio::sfx(Sfx::Cross);
         audio::led(audio::LED_TRIPLE);
     }
@@ -260,7 +297,7 @@ void reveal() {
     audio::sfx(Sfx::Reveal);
     int x, y;
     cellXY(cur, x, y);
-    addFloat(x + cs / 2, y, -(int)game::REVEAL_COST, RED);
+    addFloat(x + zs / 2, y, -(int)game::REVEAL_COST, RED);
     show(e);
 }
 
@@ -280,27 +317,34 @@ bool busy() { return locks[0].on || locks[1].on || solvedT; }
 bool solvedShown() { return solvedT > 170; }
 
 void update() {
-    // The board slides; the grid follows the cursor above it.
-    int target = 0;
-    if (board) {
-        int view = box - PANEL_H;
-        int y = off + (cur / n) * cs + cs / 2;
-        if (curWord != NONE && isDown(curWord)) y += cs;      // a little of what is ahead
-        target = y - view / 2;
-        int most = off * 2 + n * cs - view;
-        if (target > most) target = most;
-        if (target < 0) target = 0;
-    }
     // Anything in motion means a new frame to draw.
     int lo, hi;
-    if ((board ? boardT < 8 : boardT) || scroll != target || pokeT || wrongT || comboT || solvedT ||
+    if ((board ? boardT < 8 : boardT) || pokeT || wrongT || comboT || solvedT || dealT ||
         fx::activeRows(lo, hi) || shownScore != game::st.score || game::seconds() != drawnSecond)
         dirty = true;
     if (board && boardT < 8) boardT++;
     if (!board && boardT) boardT--;
-    for (uint8_t i = 0; i < 3; i++) {
-        if (scroll < target) scroll++;
-        if (scroll > target) scroll--;
+    // The tiles are laid out, a diagonal at a time, as a puzzle starts.
+    if (dealT) {
+        dealT--;
+        if ((dealT & 3) == 0) audio::note((uint16_t)(2600 - dealT * 12), 12);
+    }
+    // The camera whips between the whole grid and the close-up in a few
+    // ticks, held on the cursor; at rest it pans after the cursor.
+    uint8_t want = (uint8_t)(wantClose() ? cs * 2 : cs);
+    int tx, ty;
+    if (zs != want) {
+        zs = (uint8_t)(zs < want ? (zs + 2 > want ? want : zs + 2) : (zs - 2 < want ? want : zs - 2));
+        camTarget(camX, camY);
+        dirty = true;
+    } else {
+        camTarget(tx, ty);
+        if (tx != camX || ty != camY) {
+            int dx = tx - camX, dy = ty - camY;
+            camX += dx > 6 ? 6 : dx < -6 ? -6 : dx;
+            camY += dy > 6 ? 6 : dy < -6 ? -6 : dy;
+            dirty = true;
+        }
     }
     if (pokeT) pokeT--;
     if (wrongT) wrongT--;
@@ -316,7 +360,7 @@ void update() {
             uint8_t k = (uint8_t)(l.t / POP);
             int x, y;
             cellXY(cellOf(l.w, k), x, y);
-            fx::burst(fx::SPARK, x + cs / 2, y + cs / 2, 3, 14, FX_B);
+            fx::burst(fx::SPARK, x + zs / 2, y + zs / 2, 3, 14, FX_B);
             if (!l.cross) {
                 uint8_t s = (uint8_t)(k + game::multiplier() - 1);
                 audio::note(SCALE[s > 11 ? 11 : s], 60);
@@ -339,7 +383,7 @@ void update() {
             char text[10];
             memcpy(text, "COMBO X2!", 10);
             text[7] = (char)('0' + m);
-            fx::banner(text, fx::B_GOLD, 52, 46);
+            fx::banner(text, fx::B_GOLD, 40, 46);
         }
     }
     lastMult = m;
@@ -354,6 +398,7 @@ void update() {
     if (game::st.solved && !locks[0].on && !locks[1].on) {
         if (!solvedT) {
             fx::banner("SOLVED!", fx::B_RAINBOW, 50, 150);
+            peek = false;
             audio::sfx(Sfx::Solved);
             audio::led(audio::LED_PARTY);
         }
@@ -374,7 +419,8 @@ static bool inWord(uint8_t c, uint8_t w) {
 // How a cell looks this frame: its tile's colour, its letter's, and whether
 // it is popping (drawn a pixel larger all round).
 static uint8_t look(uint8_t c, uint32_t frame, uint8_t &ink, bool &grow) {
-    uint8_t v = cell[c], face = inWord(c, curWord) ? CYAN : WHITE;
+    // (The jackpot word's tiles are a warmer ivory until it is won.)
+    uint8_t v = cell[c], face = inWord(c, curWord) ? CYAN : inWord(c, game::st.jackpot) ? SKIN : WHITE;
     ink = (v & REVEALED) ? WINE : INK;
     grow = false;
     bool lockedNow = v & LOCKED, shine = false;
@@ -402,48 +448,102 @@ static uint8_t look(uint8_t c, uint32_t frame, uint8_t &ink, bool &grow) {
     return face;
 }
 
-// The grid. Tiles of one colour side by side are painted as one bar and
-// the gaps between them ruled in afterwards: a third of the fills that a
-// tile at a time takes (a full grid is the frame's biggest cost).
-static void drawGrid(uint32_t frame) {
-    gfx_fillRect(0, 0, box, box, FELT_DK);
+// Not yet laid out (the deal runs corner to corner)?
+static bool undealt(uint8_t r, uint8_t col) { return dealT && (r + col) * 2 > n * 4 + 6 - dealT; }
+
+// The edge a tile's colour takes in the close-up.
+static uint8_t shadeOf(uint8_t face) {
+    switch (face) {
+        case WHITE: return SILVER;
+        case CYAN:  return BLUE;
+        case RED:   return WINE;
+        case GOLD: case SKIN: return WOOD;
+        default:    return GOLD;
+    }
+}
+
+// The close-up: each tile with a shaded edge and clipped corners, the
+// number of the word that starts on it in its corner while it is empty,
+// and its letter in the large face.
+static void drawClose(uint32_t frame) {
+    uint8_t num = 0;
+    for (uint16_t c = 0; c < n * n; c++) {
+        if (!sol[c]) continue;
+        uint8_t r = (uint8_t)(c / n), col = (uint8_t)(c % n);
+        bool starts = ((col == 0 || !sol[c - 1]) && col + 1 < n && sol[c + 1]) ||
+                      ((r == 0 || !sol[c - n]) && r + 1 < n && sol[c + n]);
+        if (starts) num++;
+        int x = col * zs - camX, y = r * zs - camY, t = zs - 1;
+        if (x <= -zs || y <= -zs || x >= box || y >= box || undealt(r, col)) continue;
+        uint8_t ink;
+        bool grow;
+        uint8_t face = look((uint8_t)c, frame, ink, grow), edge = shadeOf(face);
+        if (grow) { x--; y--; t += 2; }
+        gfx_fillRect(x, y, t, t, face);
+        gfx_hline(x, y + t - 1, t, edge);
+        gfx_vline(x + t - 1, y, t, edge);
+        gfx_pixel(x, y, FELT_DK);
+        gfx_pixel(x + t - 1, y, FELT_DK);
+        gfx_pixel(x, y + t - 1, FELT_DK);
+        gfx_pixel(x + t - 1, y + t - 1, FELT_DK);
+        uint8_t v = cell[c] & LETTER;
+        if (v) {
+            bigLetter(x, y + t - 11, t - 1, v, ink);
+        } else if (starts) {
+            char b[4];
+            fmtInt(b, num);
+            text35(x + 2, y + 2, b, edge);
+        }
+    }
+}
+
+// The whole grid (and the sizes between it and the close-up). Tiles of one
+// colour side by side are painted as one bar and the gaps between them
+// ruled in afterwards: a third of the fills that a tile at a time takes (a
+// full grid is the frame's biggest cost).
+static void drawFlat(uint32_t frame) {
     uint8_t inks[MAX_N];
-    uint16_t pops = 0;                      // columns of this row that are popping
     for (uint8_t r = 0; r < n; r++) {
-        int y = off + r * cs - scroll;
-        if (y <= -cs || y >= box) continue;
+        int y = r * zs - camY;
+        if (y <= -zs || y >= box) continue;
         uint8_t runFace = 0, runFrom = 0;
         bool run = false;
-        pops = 0;
+        uint16_t pops = 0;                  // columns of this row that are popping
         for (uint8_t col = 0; col <= n; col++) {
             uint8_t c = (uint8_t)(r * n + col), face = 0;
-            bool open = col < n && sol[c], grow = false;
+            bool open = col < n && sol[c] && !undealt(r, col), grow = false;
             if (open) {
                 face = look(c, frame, inks[col], grow);
                 if (grow) pops |= (uint16_t)(1u << col);
             }
             if (run && (!open || face != runFace)) {
-                gfx_fillRect(off + runFrom * cs, y, (col - runFrom) * cs - 1, cs - 1, runFace);
+                gfx_fillRect(runFrom * zs - camX, y, (col - runFrom) * zs - 1, zs - 1, runFace);
                 run = false;
             }
             if (open && !run) { run = true; runFace = face; runFrom = col; }
         }
         // The gaps, then the popping tiles over them, then the letters.
         for (uint8_t col = 1; col < n; col++)
-            if (sol[r * n + col] && sol[r * n + col - 1]) gfx_vline(off + col * cs - 1, y, cs - 1, FELT_DK);
+            if (sol[r * n + col] && sol[r * n + col - 1]) gfx_vline(col * zs - camX - 1, y, zs - 1, FELT_DK);
         for (uint8_t col = 0; col < n; col++) {
             uint8_t c = (uint8_t)(r * n + col);
-            if (!sol[c]) continue;
-            int x = off + col * cs;
-            if (pops >> col & 1) gfx_fillRect(x - 1, y - 1, cs + 1, cs + 1, WHITE);
-            if (cell[c] & LETTER) letter(x + (cs == 8 ? 3 : 2), y + (cs == 8 ? 1 : 0), cell[c] & LETTER, inks[col]);
+            if (!sol[c] || undealt(r, col)) continue;
+            int x = col * zs - camX;
+            if (pops >> col & 1) gfx_fillRect(x - 1, y - 1, zs + 1, zs + 1, WHITE);
+            if (cell[c] & LETTER) letter(x + (zs - 1) / 2, y + (zs - 6) / 2, cell[c] & LETTER, inks[col]);
         }
     }
+}
+
+static void drawGrid(uint32_t frame) {
+    gfx_fillRect(0, 0, box, box, FELT_DK);
+    if (zs == cs * 2) drawClose(frame);
+    else drawFlat(frame);
     // The cursor's frame, over its neighbours' edges.
-    if (!game::st.solved) {
+    if (!game::st.solved && !dealT) {
         int x, y;
         cellXY(cur, x, y);
-        gfx_rect(x - 1, y - 1, cs + 1, cs + 1, INK);
+        gfx_rect(x - 1, y - 1, zs + 1, zs + 1, INK);
     }
 }
 
@@ -477,7 +577,11 @@ static void drawHud(uint32_t frame) {
         fmtInt(p, nWords);
         text35(x, 76, buf, WHITE);
     }
-    text35(x, 90, down ? "DOWN" : "ACR.", CYAN);
+    text35(x, 88, down ? "DOWN" : "ACR.", CYAN);
+    // On the jackpot word: what it pays.
+    if (curWord != NONE && curWord == game::st.jackpot && !wordLocked(curWord)) {
+        text35(x, 96, "*X3*", FX_A);
+    }
 }
 
 static void drawBoard(uint32_t frame) {
@@ -491,15 +595,8 @@ static void drawBoard(uint32_t frame) {
         if (on && pokeT > 3) y++;
         gfx_fillRect(x, y, KEY_W - 1, KEY_H - 1, on ? FX_B : SKIN);
         gfx_hline(x, y + KEY_H - 2, KEY_W - 1, on ? WOOD : SILVER);
-        if (k == 12 || k == 22) {
-            const uint8_t *g = k == 12 ? WIDE_M : WIDE_W;
-            for (int i = 0; i < 5; i++)
-                for (int r = 0; r < 5; r++)
-                    if (g[i] >> r & 1) gfx_fillRect(x + 2 + 2 * i, y + 1 + 2 * r, 2, 2, INK);
-        } else {
-            char s[2] = {(char)(k == KEY_DEL ? '<' : 'A' + k), 0};
-            text35x2(x + 4, y + 1, s, k == KEY_DEL ? RED : INK);
-        }
+        if (k == KEY_DEL) text35x2(x + 4, y + 1, "<", RED);
+        else bigLetter(x, y + 1, KEY_W - 1, (uint8_t)(k + 1), INK);
     }
     // The glove comes down on a key as it is pressed.
     if (pokeT) {

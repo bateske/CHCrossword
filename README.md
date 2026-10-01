@@ -3,11 +3,14 @@
 A crossword for the [CHGame](https://github.com/bateske/CH32SerialBoot) handheld
 (CH32X035 RISC-V, 128x128 colour LCD, piezo), in the casino of
 [CHBlackjack](https://github.com/bateske/CHBlackjack) and the tables after it:
-full 13x13 puzzles with the whole grid on screen, ivory tiles on green felt, a
-letter board that slides up to type on with a glove that pokes the keys, and a
-score attack on top of the solving. A right word locks in gold, tile by tile,
+full 13x13 puzzles with the whole grid on screen, ivory tiles on green felt,
+a camera that whips in to a close-up - bevelled tiles, the clue numbers in
+their corners, letters in a serif face - whenever you type or hold B, a
+letter board that slides up to type on with a glove that pokes the keys, and
+a score attack on top of the solving. A right word locks in gold, tile by tile,
 each a note up the scale; words in a row build a combo up to x5; one letter
-that finishes two words is a CROSS!; a wrong word buzzes and shakes the table;
+that finishes two words is a CROSS!; one word in every puzzle is the JACKPOT,
+worth three times over; a wrong word buzzes and shakes the table;
 and the last word sets the whole grid off under SOLVED!, with a time against
 par and one to three stars to keep.
 
@@ -16,8 +19,8 @@ par and one to three stars to keep.
 | Title | The puzzle list | The first words |
 |---|---|---|
 | ![title](docs/title.gif) | ![list](docs/list.gif) | ![words](docs/words.gif) |
-| **A wrong word** | **The last word** | |
-| ![wrong](docs/wrong.gif) | ![solved](docs/solved.gif) | |
+| **The close-up (hold B)** | **A wrong word** | **The last word** |
+| ![zoom](docs/zoom.gif) | ![wrong](docs/wrong.gif) | ![solved](docs/solved.gif) |
 
 (Captured from the PC simulator in `tools/chsim`, which runs the real game
 and graphics code and renders what the device shows. The game has been built
@@ -44,7 +47,7 @@ You need the Arduino IDE (2.x) or `arduino-cli`, and:
 
 The game needs **link-time optimisation**: pick *Tools > Optimize > Smallest
 + LTO*, and *Tools > USB > Upload only* (the game has no use for USB Serial,
-and uploading works as before). That is 46.4 KB of the 50,944-byte
+and uploading works as before). That is 48.8 KB of the 50,944-byte
 application region, with room left for the two flash pages that hold your
 saved puzzle and records. From the command line:
 
@@ -63,32 +66,40 @@ how cards up to 32 GB come. The game plays without a card.
 |---|---|---|
 | **D-pad** | Move to the next open square | Move the glove |
 | **A** | Bring up the letter board | Press the key |
-| **B** | Turn the word: across / down | Rub out (hold: keep rubbing) |
+| **B** | Tap: turn the word, across / down. Hold: the close-up | Rub out (hold: keep rubbing) |
 | **SELECT** | Jump to the next clue not done | Turn the word |
 | **START** | Pause | Put the board away |
 
 The clue of the word you are on is under the grid, with its number (`14A`,
-`7D`); the word is tinted and the square you are on pulses. Typing moves on
-to the word's next empty square and puts the board away when the word is
-full. On the puzzle list, left and right change pack when a card with packs
+`7D`); the word is tinted and the square you are on pulses. Bringing up the
+letter board brings the camera in round the word, twice the size, and it
+follows as you type; typing moves on to the word's next empty square and
+puts the board away (and the camera back) when the word is full. Holding B
+on the grid is the same close-up to look round in: empty squares show the
+numbers of the words that start on them. On the puzzle list, left and right change pack when a card with packs
 is in.
 
 **The score.** A right word locks: 10 a letter, times the combo. Every third
 word in a row without a mistake raises the combo, to x5. A word locked within
 eight seconds of the last earns half as much again; a letter that completes
-two words at once is a CROSS!, worth both and 50 more times the combo. A
+two words at once is a CROSS!, worth both and 50 more times the combo. One
+of each puzzle's longer words is its **jackpot** - its squares are a warmer
+ivory, and `*X3*` shows beside the grid when you are on it - and pays three
+times over. A
 complete wrong word costs 20 and the combo (the letters stay: fix them).
 REVEAL LETTER, on the pause menu, costs 50 and the combo, and that word then
 pays half. Solving pays 500, two points for every second under par (six
 seconds a square), 250 more for revealing nothing and 1,000 instead for a
 perfect solve with no wrong word either. Stars: one for solving, two under
 par with nothing revealed, three under two-thirds of par with at most three
-wrong words.
+wrong words. The stars you hold across the built-in puzzles make your rank
+on the puzzle list, from ROOKIE to LEGEND at all sixty.
 
 **Options.** CHECKING OFF plays it straight: no locks, no combo, the grid
 judged only when its last square is right (CHECK WORD on the pause menu rubs
 out a word's wrong letters, for 25). TYPING STEPS moves square by square
-instead of skipping the filled ones. SAVE + QUIT keeps the puzzle, clock and
+instead of skipping the filled ones. VIEW CLOSE plays in the close-up all the
+time, and holding B then shows the whole grid. SAVE + QUIT keeps the puzzle, clock and
 score for CONTINUE on the title; best times, scores and stars are kept for
 the built-in puzzles, and which puzzles are solved for the last two card
 packs played.
@@ -100,8 +111,13 @@ packs played.
   the clue. (15x15 packs use 7-pixel squares.) A square is a 7x7 tile with a
   3x5 letter - M and W are drawn five wide there, since in three columns they
   are an H with its bar out of place - and there is no room for numbers in
-  the squares, so the clue line carries them. While the letter board is up
-  the grid scrolls to keep the word above it.
+  the squares, so the clue line carries them.
+- **The close-up** is not the small grid doubled: at 16 pixels a square each
+  tile is drawn with a shaded edge and clipped corners, its number in the
+  3x5 font, and its letter in a face of its own - capitals nine pixels tall,
+  rasterized from DejaVu Serif Bold (`tools/tilefont.py`; 624 bytes for the
+  26, and the keys of the letter board use them too). The camera steps
+  through the sizes between in four ticks, with flat tiles, to get there.
 - **A puzzle is about 700 bytes.** The black squares are one bit each (half
   of them: the other half is the first turned half a turn), the answers five
   bits a square, and the title and clues Huffman-coded with one fixed table
@@ -121,7 +137,8 @@ packs played.
   and the shimmer on gold are the palette animating, which costs nothing.
 - **Saving** uses the last two pages of the application flash in turn, with
   a CRC, as the other games do (and shares them: saving here replaces
-  another CHGame game's save).
+  another CHGame game's save). Twenty built-in puzzles is what one page has
+  room to keep records for.
 
 ## Making puzzles
 

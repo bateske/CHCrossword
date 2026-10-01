@@ -1,0 +1,41 @@
+# The close-up: the deal, the camera in for typing and out again, B held,
+# the jackpot word.
+say G 0
+wait 12
+snap deal
+wait 60
+snap whole
+tap A
+wait 3
+snap whip
+wait 12
+snap board
+type STAY
+wait 30
+expect board=0 locked=1
+snap out
+# B held: the close-up for as long as it is.
+hold B
+wait 30
+snap held
+release
+wait 12
+snap released
+expect down=0
+# A tap of B still turns the word.
+tap B
+wait 2
+expect down=1
+# The jackpot word pays three times: here the first word of the grid to
+# be six letters or more is found by the game; lock everything else first.
+say Z 6
+wait 20
+hold B
+wait 20
+snap gold
+release
+wait 10
+solve
+wait 60
+expect solved=1
+snap solved

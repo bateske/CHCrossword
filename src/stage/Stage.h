@@ -1,9 +1,10 @@
 // The play screen: the grid, the clue under it, the score beside it, the
 // letter board that slides up to type on, and the show when a word locks.
 //
-// The whole grid is always in view (8 px cells up to 13 x 13, 7 px for 14
-// and 15) except while the letter board is up, when it scrolls to keep the
-// word being typed above the board. The screens (src/states) own the
+// The whole grid is in view (8 px cells up to 13 x 13, 7 px for 14 and 15)
+// until the camera whips in to the close-up, twice the size, round the
+// cursor: tiles with edges, the words' numbers in their corners, letters in
+// a large face. It does while the letter board is up, and while B is held. The screens (src/states) own the
 // buttons; this owns the cursor and what it does.
 #pragma once
 #include <stdint.h>
@@ -18,6 +19,8 @@ extern bool down;                   // the way the word being worked on runs
 extern bool board;                  // the letter board is up
 extern uint8_t key;                 // the key under the glove
 extern bool stepAll;                // typing moves cell by cell (else on to the next empty one)
+extern bool viewClose;              // the option: play in the close-up
+extern bool peek;                   // B held: the other view for as long as it is
 
 void enter();                       // a puzzle was loaded (or a saved one put back): onto the screen
 void setCursor(uint8_t cell, bool down);

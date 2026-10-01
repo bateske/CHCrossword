@@ -19,13 +19,21 @@ tap LEFT
 wait 20
 rec stop list
 
-# The first words of a puzzle.
+# The first words of a puzzle: the deal, the close-up to type in.
 say G 0
-wait 30
 rec start 2
+wait 70
 solve 4
 wait 20
 rec stop words
+
+# B held: a look round in the close-up.
+rec start 2
+hold B
+wait 40
+release
+wait 20
+rec stop zoom
 
 # Down the grid: the combo building, a cross.
 rec start 3
