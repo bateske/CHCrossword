@@ -94,6 +94,27 @@ static void tile(int x, int y, int w, int h, uint8_t face, uint8_t edge, uint8_t
     gfx_pixel(x + w - 1, y + h - 1, behind);
 }
 
+static uint8_t shadeOf(uint8_t face);
+
+void bigTile(int x, int y, uint8_t face, uint8_t v) {
+    uint8_t edge = shadeOf(face);
+    tile(x, y, 15, 15, face, edge, FELT);
+    if (v) bigLetter(x, y + 2, 14, v, INK, edge, edge);
+}
+
+int bigText(int x, int y, const char *s, uint8_t ink, uint8_t mid, uint8_t shadow, bool draw) {
+    int x0 = x;
+    for (; *s; s++) {
+        if (*s == ' ') { x += 4; continue; }
+        const uint16_t *g = TILEFONT;
+        for (uint8_t v = (uint8_t)(*s - 'A'); v; v--) g += 1 + 2 * (g[0] >> 8);
+        uint8_t w = (uint8_t)g[0];
+        if (draw) bigLetter(x, y, w, (uint8_t)(*s - 'A' + 1), ink, mid, shadow);
+        x += w + 1;
+    }
+    return x - x0;
+}
+
 static void cellXY(uint8_t c, int &x, int &y) {
     x = (c % n) * zs - camX;
     y = (c / n) * zs - camY;

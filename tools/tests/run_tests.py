@@ -31,6 +31,7 @@ def c_str(s):
 def builtin_pack():
     """The BUILTIN array out of the generated PuzzleData.cpp."""
     text = (ROOT / "src" / "game" / "PuzzleData.cpp").read_text()
+    text = text[text.index("#else"):]               # (past the cut-down pack of CHCW_LEAN builds)
     body = text[text.index("BUILTIN["):]
     body = body[body.index("{") + 1:body.index("}")]
     return bytes(int(v) for v in body.replace("\n", " ").split(",") if v.strip())

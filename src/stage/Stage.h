@@ -37,6 +37,12 @@ void rubOut();                      // the letter under the cursor, else the one
 void reveal();                      // the cursor's letter (the pause menu)
 void checkWord();                   // checking off: rub out the word's wrong letters
 
+// The close-up's art for other screens: a tile with a letter (1..26; 0 for
+// none) on it, and a line of capitals in the large face (returns its width;
+// draw = false only measures).
+void bigTile(int x, int y, uint8_t face, uint8_t letter);
+int bigText(int x, int y, const char *s, uint8_t ink, uint8_t mid, uint8_t shadow, bool draw = true);
+
 void update();                      // once per logic tick
 void invalidate();                  // draw the next frame whatever (an overlay changed)
 // Draws the screen if anything on it changed since it was last drawn.

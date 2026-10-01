@@ -133,17 +133,6 @@ static void heading(const char *text, int y) {
 static void centred35(int y, const char *s, uint8_t c) { text35(64 - text35Width(s) / 2, y, s, c); }
 static void centred2(int y, const char *s, uint8_t c) { fontText(64 - fontWidth(s) / 2, y, s, c); }
 
-// A menu line in the 3x5 font at twice the size, boxed while chosen with
-// two clear pixels between the frame and the lettering.
-static void menuItem(int y, const char *s, bool on, uint32_t frame) {
-    int w = text35x2Width(s), x = 64 - w / 2;
-    if (on) {
-        fillRound(x - 7, y - 4, w + 14, 17, 3, NAVY);
-        roundRect(x - 7, y - 4, w + 14, 17, 3, (frame & 16) ? FX_B : GOLD);
-    }
-    text35x2(x, y, s, on ? GOLD : WHITE);
-}
-
 static bool menuNav(uint8_t n) {
     if (arduboy.repeat(UP_BUTTON) && sel > 0) { sel--; audio::sfx(Sfx::Cursor); }
     if (arduboy.repeat(DOWN_BUTTON) && sel + 1 < n) { sel++; audio::sfx(Sfx::Cursor); }
@@ -263,13 +252,16 @@ static bool continueGame() {
     return true;
 }
 
-// The title's little show: LUCKY across and ACE down through its C. Each is
-// "solved" in turn - its clue under the tiles, then a gold lock along it -
-// and the whole thing starts over.
-static const uint16_t TITLE_LOOP = 300;
+// The title's show is the game in miniature, in the close-up's tiles: LUCKY
+// across and ACE down through its C. The tiles are dealt blank; each word's
+// clue comes up, its letters are typed in under the rainbow cursor, and it
+// locks in gold with sparks; confetti; and it starts over.
+static const uint16_t TITLE_LOOP = 380;
 static const char TITLE_WORD[] = "LUCKYAE";
 static const int8_t TITLE_AT[7][2] = {{0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}, {2, 0}, {2, 2}};
-static const uint8_t TITLE_LOCK[7] = {80, 84, 88, 92, 96, 170, 178};      // when each tile locks
+static const uint8_t TITLE_TYPE[7] = {44, 54, 64, 74, 84, 170, 184};       // when each letter is typed
+static const uint8_t TITLE_LOCK[7] = {104, 108, 112, 116, 120, 204, 212};  // ... and when its tile locks
+static const uint16_t TITLE_END = 340;                                    // the tiles cleared
 
 static void titleUpdate() {
     uint8_t items[4], n = titleItems(items);
@@ -287,46 +279,64 @@ static void titleUpdate() {
         }
     }
     uint16_t phase = (uint16_t)(t % TITLE_LOOP);
-    for (uint8_t i = 0; i < 7; i++)
-        if (phase == TITLE_LOCK[i])
-            fx::burst(fx::SPARK, 37 + TITLE_AT[i][0] * 13, 37 + TITLE_AT[i][1] * 13, 5, 16, FX_B);
-}
-
-// A big tile: a letter of the 3x5 font at twice the size.
-static void bigTile(int x, int y, char ch, uint8_t face) {
-    gfx_fillRect(x, y, 12, 12, face);
-    gfx_hline(x, y + 12, 12, FELT_DK);
-    char s[2] = {ch, 0};
-    text35x2(x + 3, y + 1, s, INK);
+    for (uint8_t i = 0; i < 7; i++) {
+        int x = 31 + TITLE_AT[i][0] * 16, y = 38 + TITLE_AT[i][1] * 16;
+        if (phase == TITLE_TYPE[i]) audio::sfx(Sfx::Key);
+        if (phase == TITLE_LOCK[i]) {
+            fx::burst(fx::SPARK, x, y, 6, 18, FX_B);
+            audio::note((uint16_t)(1047 + i * 190), 60);
+        }
+    }
+    if (phase == 122 || phase == 214) audio::sfx(Sfx::Coin);
+    if (phase == 216 || phase == 236 || phase == 256) {
+        fx::fountain(20, 124, 10);
+        fx::fountain(108, 124, 10);
+    }
 }
 
 static void titleRender(uint32_t frame) {
     feltBackdrop();
-    fillRound(6, 5, 116, 22, 4, NAVY);
-    roundRect(6, 5, 116, 22, 4, GOLD);
-    heading("CROSSWORD", 10);
+    fillRound(6, 4, 116, 22, 4, NAVY);
+    roundRect(6, 4, 116, 22, 4, GOLD);
+    heading("CROSSWORD", 9);
     uint16_t phase = (uint16_t)(t % TITLE_LOOP);
+    int next = -1;                      // the tile the cursor is on
     for (uint8_t i = 0; i < 7; i++) {
         // The tiles drop in once, one after another.
-        int since = (int)t - 6 - i * 5;
+        int since = (int)t - 4 - i * 4;
         if (since < 0) continue;
         int drop = since < 8 ? ((256 - fx::ease(fx::OUT_BOUNCE, since, 8)) * 20) >> 8 : 0;
+        int x = 24 + TITLE_AT[i][0] * 16, y = 30 + TITLE_AT[i][1] * 16 - drop;
+        uint8_t lock = i == 2 && phase >= TITLE_LOCK[6] ? TITLE_LOCK[5] + 4 : TITLE_LOCK[i];
+        bool typed = phase >= TITLE_TYPE[i] && phase < TITLE_END;
         uint8_t face = WHITE;
-        if (phase >= TITLE_LOCK[i] && phase < 270) face = phase < TITLE_LOCK[i] + 5 ? FX_B : GOLD;
-        bigTile(31 + TITLE_AT[i][0] * 13, 31 + TITLE_AT[i][1] * 13 - drop, TITLE_WORD[i], face);
+        if (typed && phase >= lock) face = phase < lock + 6 ? FX_B : GOLD;
+        else if (phase < TITLE_END && phase >= (i < 5 ? 30 : 150) && phase < TITLE_LOCK[i < 5 ? 4 : 6]) face = CYAN;
+        stage::bigTile(x, y, face, typed ? (uint8_t)(TITLE_WORD[i] - 'A' + 1) : 0);
+        if (!typed && next < 0 && t > 40 && phase >= 30 && (i < 5 || phase >= 150)) {
+            next = i;
+            roundRect(x - 1, y - 1, 17, 17, 1, FX_A);
+        }
     }
-    // The clue being "solved".
-    if (t > 50 && phase >= 30 && phase < 270) {
-        bool second = phase >= 130;
+    // The clue being solved.
+    if (t > 40 && phase >= 30 && phase < TITLE_END) {
+        bool second = phase >= 150;
         const char *id = second ? "2D" : "1A", *clue = second ? "HIGH CARD" : "FORTUNATE";
         int w = text35Width(clue) + 12, x = 64 - w / 2;
-        text35(x, 72, id, FX_B);
-        text35(x + 12, 72, clue, WHITE);
+        text35(x, 80, id, FX_B);
+        text35(x + 12, 80, clue, WHITE);
+    }
+    // The menu, in the large face; the glove on its side points at the choice.
+    uint8_t items[4], n = titleItems(items);
+    int y0 = 125 - n * 12;
+    for (uint8_t i = 0; i < n; i++) {
+        const char *text = ITEM[items[i]];
+        int w = stage::bigText(0, 0, text, 0, 0, 0, false), x = 66 - w / 2, y = y0 + i * 12;
+        bool on = i == sel;
+        stage::bigText(x, y, text, on ? FX_B : WHITE, on ? WOOD : FELT_LT, INK);
+        if (on) sprite4(HAND_SIDE, x - HAND_SIDE[0] - 3 + ((frame >> 4) & 1), y - 2);
     }
     fx::drawParticles(2);
-    uint8_t items[4], n = titleItems(items);
-    int y0 = 126 - n * 15;
-    for (uint8_t i = 0; i < n; i++) menuItem(y0 + i * 15, ITEM[items[i]], i == sel, frame);
 }
 
 // ---------------------------------------------------------------------------

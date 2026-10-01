@@ -21,9 +21,9 @@
 #endif
 
 // A device debug build carries the ~3 KB protocol and USB Serial, which the
-// whole game no longer leaves room for: CHCW_LEAN leaves saving and the
-// options screen out of it (puzzles are started with the protocol's G
-// command). tools/device.py sets it for debug builds: -DCHCW_LEAN=1.
+// whole game no longer leaves room for: CHCW_LEAN leaves saving, the
+// options screen and all but the first three built-in puzzles out of it
+// (puzzles are started with the protocol's G command). tools/device.py sets it for debug builds: -DCHCW_LEAN=1.
 #ifndef CHCW_LEAN
 #define CHCW_LEAN        0
 #endif

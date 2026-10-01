@@ -3,7 +3,7 @@
 
 # The title.
 wait 8
-gif title 150 2
+gif title 190 2
 
 # The list.
 tap A

@@ -49,7 +49,7 @@ You need the Arduino IDE (2.x) or `arduino-cli`, and:
 
 The game needs **link-time optimisation**: pick *Tools > Optimize > Smallest
 + LTO*, and *Tools > USB > Upload only* (the game has no use for USB Serial,
-and uploading works as before). That is 49.8 KB of the 50,944-byte
+and uploading works as before). That is 50.4 KB of the 50,944-byte
 application region, with room left for the two flash pages that hold your
 saved puzzle and records. From the command line:
 
